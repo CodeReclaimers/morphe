@@ -129,6 +129,16 @@ from .serialization import (
     load_sketch,
 )
 
+# Adapter interface
+from .adapter import (
+    SketchBackendAdapter,
+    AdapterError,
+    SketchCreationError,
+    GeometryError,
+    ConstraintError,
+    ExportError,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -201,4 +211,12 @@ __all__ = [
     "dict_to_point_ref",
     "save_sketch",
     "load_sketch",
+
+    # Adapter interface
+    "SketchBackendAdapter",
+    "AdapterError",
+    "SketchCreationError",
+    "GeometryError",
+    "ConstraintError",
+    "ExportError",
 ]

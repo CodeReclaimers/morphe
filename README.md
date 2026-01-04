@@ -9,7 +9,7 @@ This project provides:
 - **`sketch_canonical`**: Platform-independent schema for 2D sketch geometry and constraints
 - **`sketch_adapter_freecad`**: Adapter for FreeCAD's Sketcher workbench
 
-The canonical format enables sketches to be stored, transferred, and manipulated independently of any specific CAD system.
+The canonical format enables constrained sketches to be stored, transferred, and manipulated independently of any specific CAD system.
 
 See [SPECIFICATION.md](SPECIFICATION.md) for the complete technical specification, including supported geometry types, constraints, JSON schema format, and platform-specific adapter details.
 

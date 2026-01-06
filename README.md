@@ -1,5 +1,10 @@
 # Canonical Sketch
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/codereclaimers/canonical_sketch/actions/workflows/test.yml/badge.svg)](https://github.com/codereclaimers/canonical_sketch/actions/workflows/test.yml)
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
+
 A CAD-agnostic 2D sketch geometry and constraint representation with adapter support for FreeCAD.
 
 ## Overview

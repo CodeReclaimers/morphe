@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "sketch-canonical"
 version = "0.1.0"
 description = "CAD-agnostic representation for 2D sketch geometry and constraints"
-readme = "SPECIFICATION.md"
+readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 classifiers = [
@@ -20,6 +20,15 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Computer Aided Design (CAD)",
 ]
 keywords = ["cad", "sketch", "geometry", "constraints", "freecad", "solidworks", "fusion360"]
+authors = [
+    {name = "Alan", email = "alan@codereclaimers.com"}
+]
+
+[project.urls]
+Homepage = "https://github.com/codereclaimers/canonical_sketch"
+Repository = "https://github.com/codereclaimers/canonical_sketch"
+Issues = "https://github.com/codereclaimers/canonical_sketch/issues"
+Documentation = "https://github.com/codereclaimers/canonical_sketch/blob/main/SPECIFICATION.md"
 
 [project.optional-dependencies]
 dev = [

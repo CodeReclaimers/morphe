@@ -73,8 +73,13 @@ class VertexMap:
             point_type: The canonical PointType
 
         Returns:
-            The SketchPoint object (or Point3D for PointType.CENTER on points)
+            The SketchPoint object for use in constraints
         """
+        # Special case: SketchPoint entities should return themselves
+        # for constraint purposes (not their geometry which is Point3D)
+        if primitive_type.lower() == "point" and point_type == PointType.CENTER:
+            return entity  # Return the SketchPoint itself
+
         prop_name = cls.get_point_property(primitive_type, point_type)
         return getattr(entity, prop_name)
 

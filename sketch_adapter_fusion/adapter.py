@@ -84,6 +84,7 @@ class FusionAdapter(SketchBackendAdapter):
         self._sketch = None
         self._id_to_entity: dict[str, Any] = {}
         self._entity_to_id: dict[Any, str] = {}
+        self._fixed_entity_tokens: set[str] = set()  # Track entities with Fixed constraints
 
     def create_sketch(self, name: str, plane=None) -> None:
         """Create a new sketch in Fusion 360.
@@ -118,6 +119,7 @@ class FusionAdapter(SketchBackendAdapter):
             # Clear mappings for new sketch
             self._id_to_entity.clear()
             self._entity_to_id.clear()
+            self._fixed_entity_tokens.clear()
 
         except Exception as e:
             raise SketchCreationError(f"Failed to create sketch: {e}") from e
@@ -248,10 +250,10 @@ class FusionAdapter(SketchBackendAdapter):
         arcs = self._sketch.sketchCurves.sketchArcs
 
         # Get three points for arc construction
-        three_pts = arc.to_three_point()
-        start_pt = self._point2d_to_point3d(three_pts["start"])
-        mid_pt = self._point2d_to_point3d(three_pts["mid"])
-        end_pt = self._point2d_to_point3d(three_pts["end"])
+        start, mid, end = arc.to_three_point()
+        start_pt = self._point2d_to_point3d(start)
+        mid_pt = self._point2d_to_point3d(mid)
+        end_pt = self._point2d_to_point3d(end)
 
         return arcs.addByThreePoints(start_pt, mid_pt, end_pt)
 
@@ -279,23 +281,18 @@ class FusionAdapter(SketchBackendAdapter):
         control-point-based splines via NurbsCurve3D. We use the NURBS
         approach for precise control point specification.
         """
-        # Create a NurbsCurve3D from the spline data
-        poles = []
-        for pole in spline.poles:
-            poles.append(self._point2d_to_point3d(pole))
-
-        # Create ObjectCollection for control points
-        control_points = self._adsk_core.ObjectCollection.create()
-        for pole in poles:
-            control_points.add(pole)
+        # Create a list of Point3D from the spline control points
+        control_points = []
+        for pole in spline.control_points:
+            control_points.append(self._point2d_to_point3d(pole))
 
         # Extract knot vector and weights
         knots = list(spline.knots)
         degree = spline.degree
-        weights = list(spline.weights) if spline.weights else [1.0] * len(spline.poles)
+        weights = list(spline.weights) if spline.weights else [1.0] * len(spline.control_points)
 
         # Create the NURBS curve (transient geometry)
-        # For rational (weighted) B-splines:
+        # NurbsCurve3D methods expect Python lists, not ObjectCollections
         if spline.weights:
             nurbs_curve = self._adsk_core.NurbsCurve3D.createRational(
                 control_points,
@@ -305,7 +302,6 @@ class FusionAdapter(SketchBackendAdapter):
                 spline.periodic
             )
         else:
-            # For non-rational B-splines:
             nurbs_curve = self._adsk_core.NurbsCurve3D.createNonRational(
                 control_points,
                 degree,
@@ -556,19 +552,21 @@ class FusionAdapter(SketchBackendAdapter):
     def _add_fixed(self, refs) -> bool:
         """Add a fixed/lock constraint.
 
-        Note: The exact API method name may vary between Fusion 360 versions.
-        This implementation tries 'addFix' which is the expected method name.
+        In Fusion 360, fixing geometry is done by setting isFixed = True on the entity,
+        not via geometricConstraints.addFix() which doesn't exist.
         """
-        constraints = self._sketch.geometricConstraints
-
         for ref in refs:
             entity = self._get_entity_for_ref(ref)
-            # The method name is 'addFix' in Fusion 360's API
-            if hasattr(constraints, 'addFix'):
-                constraints.addFix(entity)
+
+            # In Fusion 360, we fix geometry by setting isFixed property
+            if hasattr(entity, 'isFixed'):
+                entity.isFixed = True
+                # Track the fixed entity
+                if hasattr(entity, 'entityToken'):
+                    self._fixed_entity_tokens.add(entity.entityToken)
             else:
                 raise ConstraintError(
-                    "FIXED constraint not supported in this Fusion 360 version"
+                    f"Cannot fix entity {entity}: no isFixed property"
                 )
 
         return True
@@ -861,16 +859,111 @@ class FusionAdapter(SketchBackendAdapter):
         if not self._sketch:
             return SolverStatus.DIRTY, -1
 
-        # Fusion 360 doesn't expose solver status directly in the same way as FreeCAD
-        # We infer it from the sketch's constraint state
         try:
-            # Check if fully constrained
-            # Fusion uses different mechanisms - we check profile validity
-            # and constraint count vs geometry
+            # Count user-created curves and check if they're fixed
+            # In Fusion 360, fixing is done by setting entity.isFixed = True
+            user_curves = []
+            fixed_curves = []
 
-            # For now, return a reasonable default
-            # In practice, Fusion 360 doesn't expose DOF directly
-            return SolverStatus.UNDER_CONSTRAINED, -1
+            for i in range(self._sketch.sketchCurves.sketchLines.count):
+                line = self._sketch.sketchCurves.sketchLines.item(i)
+                # Skip reference geometry (origin axes, etc.)
+                if line.isReference:
+                    continue
+                # Check if line is fixed via isFixed property, our tracking, or isFullyConstrained
+                is_fixed = (
+                    (hasattr(line, 'isFixed') and line.isFixed) or
+                    line.entityToken in self._fixed_entity_tokens or
+                    (hasattr(line, 'isFullyConstrained') and line.isFullyConstrained)
+                )
+                if is_fixed:
+                    fixed_curves.append(line)
+                else:
+                    user_curves.append(line)
+
+            for i in range(self._sketch.sketchCurves.sketchCircles.count):
+                circle = self._sketch.sketchCurves.sketchCircles.item(i)
+                if circle.isReference:
+                    continue
+                is_fixed = (
+                    (hasattr(circle, 'isFixed') and circle.isFixed) or
+                    circle.entityToken in self._fixed_entity_tokens or
+                    (hasattr(circle, 'isFullyConstrained') and circle.isFullyConstrained)
+                )
+                if is_fixed:
+                    fixed_curves.append(circle)
+                else:
+                    user_curves.append(circle)
+
+            for i in range(self._sketch.sketchCurves.sketchArcs.count):
+                arc = self._sketch.sketchCurves.sketchArcs.item(i)
+                if arc.isReference:
+                    continue
+                is_fixed = (
+                    (hasattr(arc, 'isFixed') and arc.isFixed) or
+                    arc.entityToken in self._fixed_entity_tokens or
+                    (hasattr(arc, 'isFullyConstrained') and arc.isFullyConstrained)
+                )
+                if is_fixed:
+                    fixed_curves.append(arc)
+                else:
+                    user_curves.append(arc)
+
+            # If we have fixed curves and no unfixed curves, fully constrained
+            if len(fixed_curves) > 0 and len(user_curves) == 0:
+                return SolverStatus.FULLY_CONSTRAINED, 0
+
+            # Also check the sketch-level property as fallback
+            if hasattr(self._sketch, 'isFullyConstrained') and self._sketch.isFullyConstrained:
+                return SolverStatus.FULLY_CONSTRAINED, 0
+
+            # Estimate DOF from unfixed geometry (user_curves already excludes fixed ones)
+            dof = 0
+            for curve in user_curves:
+                # Each unfixed curve contributes DOF
+                # Line: 4 DOF (2 points × 2 coords)
+                # Circle: 3 DOF (center x, y, radius)
+                # Arc: 5 DOF (center, radius, start/end angles)
+                if "SketchLine" in curve.objectType:
+                    dof += 4
+                elif "SketchCircle" in curve.objectType:
+                    dof += 3
+                elif "SketchArc" in curve.objectType:
+                    dof += 5
+                else:
+                    dof += 2  # Default
+
+            # If we found some DOF, return under-constrained
+            if dof > 0:
+                return SolverStatus.UNDER_CONSTRAINED, dof
+
+            # Check standalone points (not connected to curves)
+            for i in range(self._sketch.sketchPoints.count):
+                point = self._sketch.sketchPoints.item(i)
+                if point == self._sketch.originPoint:
+                    continue
+                # Skip points connected to curves (their DOF is counted with the curve)
+                if point.connectedEntities and point.connectedEntities.count > 0:
+                    continue
+                # Check if point is fixed via isFixed property, our tracking, or isFullyConstrained
+                is_fixed = (
+                    (hasattr(point, 'isFixed') and point.isFixed) or
+                    point.entityToken in self._fixed_entity_tokens or
+                    (hasattr(point, 'isFullyConstrained') and point.isFullyConstrained)
+                )
+                if is_fixed:
+                    continue
+                dof += 2
+
+            if dof > 0:
+                return SolverStatus.UNDER_CONSTRAINED, dof
+
+            # If we have fixed curves and no remaining DOF, fully constrained
+            if len(fixed_curves) > 0:
+                return SolverStatus.FULLY_CONSTRAINED, 0
+
+            # Fallback: if we couldn't determine DOF but sketch seems unconstrained
+            return SolverStatus.UNDER_CONSTRAINED, 1
 
         except Exception:
             return SolverStatus.DIRTY, -1
@@ -1009,6 +1102,10 @@ class FusionAdapter(SketchBackendAdapter):
         for i in range(lines.count):
             line = lines.item(i)
 
+            # Skip reference geometry (origin X/Y axes)
+            if line.isReference:
+                continue
+
             start = self._point3d_to_point2d(line.startSketchPoint.geometry)
             end = self._point3d_to_point2d(line.endSketchPoint.geometry)
 
@@ -1028,6 +1125,10 @@ class FusionAdapter(SketchBackendAdapter):
         for i in range(arcs.count):
             arc = arcs.item(i)
 
+            # Skip reference geometry
+            if arc.isReference:
+                continue
+
             center = self._point3d_to_point2d(arc.centerSketchPoint.geometry)
             start = self._point3d_to_point2d(arc.startSketchPoint.geometry)
             end = self._point3d_to_point2d(arc.endSketchPoint.geometry)
@@ -1044,8 +1145,8 @@ class FusionAdapter(SketchBackendAdapter):
 
             canonical_arc = Arc(
                 center=center,
-                start=start,
-                end=end,
+                start_point=start,
+                end_point=end,
                 ccw=ccw,
                 construction=arc.isConstruction
             )
@@ -1059,6 +1160,10 @@ class FusionAdapter(SketchBackendAdapter):
         circles = self._sketch.sketchCurves.sketchCircles
         for i in range(circles.count):
             circle = circles.item(i)
+
+            # Skip reference geometry
+            if circle.isReference:
+                continue
 
             center = self._point3d_to_point2d(circle.centerSketchPoint.geometry)
             radius = circle.radius * CM_TO_MM
@@ -1074,13 +1179,22 @@ class FusionAdapter(SketchBackendAdapter):
             self._entity_to_id[circle.entityToken] = prim_id
 
     def _export_points(self, doc: SketchDocument) -> None:
-        """Export all sketch points from the sketch."""
+        """Export all sketch points from the sketch.
+
+        Only exports standalone points, not structural points that are
+        part of other geometry (line endpoints, arc endpoints, etc.)
+        """
         points = self._sketch.sketchPoints
         for i in range(points.count):
             point = points.item(i)
 
             # Skip origin point
             if point == self._sketch.originPoint:
+                continue
+
+            # Skip points that are connected to curves (structural points)
+            # Only export standalone/explicit points
+            if point.connectedEntities and point.connectedEntities.count > 0:
                 continue
 
             position = self._point3d_to_point2d(point.geometry)
@@ -1114,32 +1228,39 @@ class FusionAdapter(SketchBackendAdapter):
 
         # Get the NURBS data from the spline
         geom = spline.geometry
-        nurbs = geom.asNurbsCurve
+        # Handle both cases: geometry may be NurbsCurve3D directly or need conversion
+        if hasattr(geom, 'asNurbsCurve'):
+            nurbs = geom.asNurbsCurve
+        else:
+            nurbs = geom  # Already a NurbsCurve3D
 
-        # Extract control points
-        _, control_points = nurbs.controlPoints
-        poles = []
-        for pt in control_points:
-            poles.append(Point2D(pt.x * CM_TO_MM, pt.y * CM_TO_MM))
+        # Use getData() which returns all NURBS data in a predictable format
+        data = nurbs.getData()
 
-        # Extract knots
-        _, knots = nurbs.knots
-        knots = list(knots)
+        # Extract data based on actual structure from getData():
+        # Index 0: success (bool)
+        # Index 1: control points (Point3DVector)
+        # Index 2: degree (int)
+        # Index 3: knots (tuple)
+        # Index 4: isPeriodic (bool)
+        # Index 5: weights (tuple, empty if non-rational)
+        # Index 6: isRational (bool)
+        ctrl_pts = data[1]
+        degree = data[2]
+        knots = list(data[3])
+        periodic = data[4]
 
-        # Extract degree
-        degree = nurbs.degree
+        control_points = []
+        for pt in ctrl_pts:
+            control_points.append(Point2D(pt.x * CM_TO_MM, pt.y * CM_TO_MM))
 
-        # Extract weights if rational
+        # Extract weights if rational (non-empty weights tuple)
         weights = None
-        if nurbs.isRational:
-            _, weights = nurbs.weights
-            weights = list(weights)
-
-        # Check if periodic
-        periodic = nurbs.isPeriodic
+        if len(data) > 5 and data[5]:
+            weights = list(data[5])
 
         canonical_spline = Spline(
-            poles=poles,
+            control_points=control_points,
             degree=degree,
             knots=knots,
             weights=weights,

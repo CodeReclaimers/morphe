@@ -47,8 +47,7 @@ jobs:
 
       - name: Install FreeCAD
         run: |
-          sudo apt-get update
-          sudo apt-get install -y freecad
+          sudo snap install freecad
 
       - name: Set up Python
         uses: actions/setup-python@v5

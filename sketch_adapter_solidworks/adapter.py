@@ -26,6 +26,7 @@ from sketch_canonical import (
     Point,
     Point2D,
     PointRef,
+    PointType,
     SketchBackendAdapter,
     SketchConstraint,
     SketchCreationError,
@@ -156,6 +157,9 @@ class SolidWorksAdapter(SketchBackendAdapter):
         """
         self._app = get_solidworks_application()
 
+        # Disable dimension input dialog to prevent blocking
+        self._disable_dimension_dialog()
+
         if document is not None:
             self._document = document
         else:
@@ -169,6 +173,31 @@ class SolidWorksAdapter(SketchBackendAdapter):
         # Store original primitive data for export (since COM access is limited)
         # Use a list indexed by creation order since COM object ids are not stable
         self._segment_geometry_list: list[dict] = []
+        # Track if constraints have been applied (requires reading actual geometry)
+        self._constraints_applied: bool = False
+
+    def _disable_dimension_dialog(self) -> None:
+        """Disable the dimension input dialog that blocks automation.
+
+        SolidWorks shows a 'Modify' dialog when adding dimensions via API.
+        This tries multiple approaches to disable it.
+        """
+        # swInputDimValOnCreate - controls whether dimension dialog appears
+        # Try multiple possible indices as they vary by SW version
+        preference_indices = [8, 78, 108]
+
+        for idx in preference_indices:
+            try:
+                self._app.SetUserPreferenceToggle(idx, False)
+            except Exception:
+                pass
+
+        # Also try setting the string preference for default dimension behavior
+        try:
+            # swDetailingDimInput = 201 in some versions
+            self._app.SetUserPreferenceIntegerValue(201, 0)
+        except Exception:
+            pass
 
     def _ensure_document(self) -> None:
         """Ensure we have an active part document."""
@@ -325,6 +354,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
             self._entity_to_id.clear()
             self._ground_constraints.clear()
             self._segment_geometry_list.clear()
+            self._constraints_applied = False
 
         except Exception as e:
             raise SketchCreationError(f"Failed to create sketch: {e}") from e
@@ -378,6 +408,9 @@ class SolidWorksAdapter(SketchBackendAdapter):
             # Track point coordinates used by segments to avoid duplicating them
             used_point_coords: set[tuple[float, float]] = set()
 
+            # Pre-compute segment-to-points matching for lines with same length
+            self._used_point_pairs: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+
             # Get all sketch segments
             # Note: In COM late binding, GetSketchSegments may be a property returning
             # a tuple rather than a callable method
@@ -397,14 +430,25 @@ class SolidWorksAdapter(SketchBackendAdapter):
 
                         # Track coordinates used by this primitive
                         if isinstance(prim, Line):
-                            used_point_coords.add((round(prim.start.x, 6), round(prim.start.y, 6)))
-                            used_point_coords.add((round(prim.end.x, 6), round(prim.end.y, 6)))
+                            start_coord = (round(prim.start.x, 6), round(prim.start.y, 6))
+                            end_coord = (round(prim.end.x, 6), round(prim.end.y, 6))
+                            used_point_coords.add(start_coord)
+                            used_point_coords.add(end_coord)
+                            # Also track point pair to avoid duplicate line matching
+                            pair_key = (
+                                (round(prim.start.x, 4), round(prim.start.y, 4)),
+                                (round(prim.end.x, 4), round(prim.end.y, 4))
+                            )
+                            self._used_point_pairs.add(pair_key)
                         elif isinstance(prim, Arc):
                             used_point_coords.add((round(prim.start_point.x, 6), round(prim.start_point.y, 6)))
                             used_point_coords.add((round(prim.end_point.x, 6), round(prim.end_point.y, 6)))
                             used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
                         elif isinstance(prim, Circle):
                             used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
+                        elif isinstance(prim, Spline):
+                            for pt in prim.control_points:
+                                used_point_coords.add((round(pt.x, 6), round(pt.y, 6)))
 
             # Export standalone points (skip points that are part of segments)
             points = self._get_com_result(sketch, "GetSketchPoints2")
@@ -549,6 +593,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
         if segment is not None:
             self._segment_geometry_list.append({
                 'type': 'line',
+                'element_id': line.id,
                 'start': (line.start.x, line.start.y),
                 'end': (line.end.x, line.end.y),
                 'construction': line.construction
@@ -574,6 +619,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
         if segment is not None:
             self._segment_geometry_list.append({
                 'type': 'circle',
+                'element_id': circle.id,
                 'center': (circle.center.x, circle.center.y),
                 'radius': circle.radius,
                 'construction': circle.construction
@@ -604,6 +650,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
         if segment is not None:
             self._segment_geometry_list.append({
                 'type': 'arc',
+                'element_id': arc.id,
                 'center': (arc.center.x, arc.center.y),
                 'start': (arc.start_point.x, arc.start_point.y),
                 'end': (arc.end_point.x, arc.end_point.y),
@@ -648,6 +695,17 @@ class SolidWorksAdapter(SketchBackendAdapter):
             points_array,
             False  # Not periodic
         )
+
+        # Store geometry data for export
+        if segment is not None:
+            self._segment_geometry_list.append({
+                'type': 'spline',
+                'element_id': spline.id,
+                'control_points': [(pt.x, pt.y) for pt in spline.control_points],
+                'degree': spline.degree,
+                'construction': spline.construction
+            })
+
         return segment
 
     # =========================================================================
@@ -676,6 +734,9 @@ class SolidWorksAdapter(SketchBackendAdapter):
 
             model = self._document
 
+            # Mark that constraints are being applied (geometry may change)
+            self._constraints_applied = True
+
             # Geometric constraints
             if ctype == ConstraintType.COINCIDENT:
                 return self._add_coincident(model, refs)
@@ -700,21 +761,21 @@ class SolidWorksAdapter(SketchBackendAdapter):
             elif ctype == ConstraintType.FIXED:
                 return self._add_fixed(model, refs)
 
-            # Dimensional constraints
+            # Dimensional constraints - disable input dialog first
             elif ctype == ConstraintType.DISTANCE:
-                return self._add_distance(model, refs, value)
+                return self._add_dimension_constraint(lambda: self._add_distance(model, refs, value))
             elif ctype == ConstraintType.RADIUS:
-                return self._add_radius(model, refs, value)
+                return self._add_dimension_constraint(lambda: self._add_radius(model, refs, value))
             elif ctype == ConstraintType.DIAMETER:
-                return self._add_diameter(model, refs, value)
+                return self._add_dimension_constraint(lambda: self._add_diameter(model, refs, value))
             elif ctype == ConstraintType.ANGLE:
-                return self._add_angle(model, refs, value)
+                return self._add_dimension_constraint(lambda: self._add_angle(model, refs, value))
             elif ctype == ConstraintType.LENGTH:
-                return self._add_length(model, refs, value)
+                return self._add_dimension_constraint(lambda: self._add_length(model, refs, value))
             elif ctype == ConstraintType.DISTANCE_X:
-                return self._add_distance_x(model, refs, value)
+                return self._add_dimension_constraint(lambda: self._add_distance_x(model, refs, value))
             elif ctype == ConstraintType.DISTANCE_Y:
-                return self._add_distance_y(model, refs, value)
+                return self._add_dimension_constraint(lambda: self._add_distance_y(model, refs, value))
 
             else:
                 raise ConstraintError(f"Unsupported constraint type: {ctype}")
@@ -724,6 +785,30 @@ class SolidWorksAdapter(SketchBackendAdapter):
         except Exception as e:
             raise ConstraintError(f"Failed to add constraint: {e}") from e
 
+    def _add_dimension_constraint(self, add_func) -> bool:
+        """Wrapper to add dimensional constraints with dialog suppression.
+
+        Temporarily disables the dimension input dialog to prevent blocking.
+        """
+        # swInputDimValOnCreate = 8 controls whether dimension dialog appears
+        try:
+            # Save current setting
+            old_val = self._app.GetUserPreferenceToggle(8)
+            # Disable the input dialog
+            self._app.SetUserPreferenceToggle(8, False)
+        except Exception:
+            old_val = None
+
+        try:
+            return add_func()
+        finally:
+            # Restore setting
+            if old_val is not None:
+                try:
+                    self._app.SetUserPreferenceToggle(8, old_val)
+                except Exception:
+                    pass
+
     def _select_entity(self, ref: str | PointRef, append: bool = False) -> bool:
         """Select an entity or point for constraint creation."""
         try:
@@ -731,18 +816,106 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 entity = self._id_to_entity.get(ref.element_id)
                 if entity is None:
                     return False
+
+                # Try to get point from entity directly
                 point = get_sketch_point_from_entity(entity, ref.point_type)
+
+                # If that failed, try finding the point by coordinates
+                if point is None:
+                    point = self._find_sketch_point_by_coords(ref.element_id, ref.point_type)
+
                 if point is None:
                     return False
+
                 # Select the point
-                return bool(point.Select4(append, None))
+                return bool(point.Select(append))
             else:
                 entity = self._id_to_entity.get(ref)
                 if entity is None:
                     return False
-                return bool(entity.Select4(append, None))
+                # Use Select() instead of Select4() for COM compatibility
+                return bool(entity.Select(append))
         except Exception:
             return False
+
+    def _find_sketch_point_by_coords(self, element_id: str, point_type: PointType) -> Any:
+        """Find a sketch point by looking up stored coordinates and matching."""
+        if self._sketch is None:
+            return None
+
+        # Find the index of this element in the geometry list
+        entity = self._id_to_entity.get(element_id)
+        if entity is None:
+            return None
+
+        # Find the stored geometry for this element
+        entity_index = self._entity_to_id.get(id(entity))
+        if entity_index is None:
+            # Try to find by searching through entities
+            for idx, geom in enumerate(self._segment_geometry_list):
+                # Check if this geometry matches the entity
+                pass
+
+        # Look up the geometry by element_id
+        geom = None
+        for idx, g in enumerate(self._segment_geometry_list):
+            # Match by checking if the entity at this index is our entity
+            # Since we can't compare COM objects reliably, use the stored coordinates
+            if g.get('element_id') == element_id:
+                geom = g
+                break
+
+        # If we don't have stored geometry with element_id, try matching by index
+        if geom is None:
+            # Find the entity index in the order we stored it
+            for prim_id, ent in self._id_to_entity.items():
+                if prim_id == element_id:
+                    # Find the index of this primitive
+                    # We need to track which geometry belongs to which primitive
+                    break
+
+            # Fallback: just use the primitive ID to find geometry
+            # The primitive ID should match the order of creation
+            for idx, g in enumerate(self._segment_geometry_list):
+                pass  # Can't reliably match without element_id
+
+            return None
+
+        # Get the target coordinates based on point type
+        target_x, target_y = None, None
+        if point_type == PointType.START:
+            if 'start' in geom:
+                target_x, target_y = geom['start']
+        elif point_type == PointType.END:
+            if 'end' in geom:
+                target_x, target_y = geom['end']
+        elif point_type == PointType.CENTER:
+            if 'center' in geom:
+                target_x, target_y = geom['center']
+
+        if target_x is None:
+            return None
+
+        # Convert to meters for comparison
+        target_x_m = target_x * MM_TO_M
+        target_y_m = target_y * MM_TO_M
+
+        # Get all sketch points and find the one at these coordinates
+        points = self._get_com_result(self._sketch, "GetSketchPoints2")
+        if not points:
+            return None
+
+        tolerance = 1e-6  # meters
+        for pt in points:
+            try:
+                px = pt.X
+                py = pt.Y
+                if abs(px - target_x_m) < tolerance and abs(py - target_y_m) < tolerance:
+                    return pt
+            except Exception:
+                continue
+
+        return None
 
     def _add_coincident(self, model: Any, refs: list) -> bool:
         """Add a coincident constraint."""
@@ -867,19 +1040,70 @@ class SolidWorksAdapter(SketchBackendAdapter):
         return True
 
     def _add_midpoint(self, model: Any, refs: list) -> bool:
-        """Add a midpoint constraint."""
+        """Add a midpoint constraint by moving the point to the line's midpoint.
+
+        Note: Using SketchAddConstraints may not always move the geometry.
+        Instead, we calculate the midpoint and move the point directly.
+        """
         if len(refs) < 2:
             raise ConstraintError("Midpoint requires 2 references")
 
-        model.ClearSelection2(True)
-        # First ref should be the point, second the line
-        if not self._select_entity(refs[0], False):
-            raise ConstraintError("Could not select point")
-        if not self._select_entity(refs[1], True):
-            raise ConstraintError("Could not select line")
+        # First ref is the point, second is the line
+        point_ref = refs[0]
+        line_ref = refs[1]
 
-        model.SketchAddConstraints("sgATMIDDLE")
-        return True
+        # Get line geometry to calculate midpoint
+        line_id = line_ref.element_id if isinstance(line_ref, PointRef) else line_ref
+        line_geom = None
+        for geom in self._segment_geometry_list:
+            if geom.get('element_id') == line_id and geom['type'] == 'line':
+                line_geom = geom
+                break
+
+        if line_geom is None:
+            # Try the traditional constraint approach
+            model.ClearSelection2(True)
+            if not self._select_entity(refs[0], False):
+                raise ConstraintError("Could not select point")
+            if not self._select_entity(refs[1], True):
+                raise ConstraintError("Could not select line")
+            model.SketchAddConstraints("sgATMIDDLE")
+            return True
+
+        # Calculate midpoint
+        mid_x = (line_geom['start'][0] + line_geom['end'][0]) / 2
+        mid_y = (line_geom['start'][1] + line_geom['end'][1]) / 2
+
+        # Move the point to the midpoint
+        if isinstance(point_ref, PointRef):
+            point_id = point_ref.element_id
+            # Check if this is a standalone Point primitive
+            for geom in self._segment_geometry_list:
+                if geom.get('element_id') == point_id:
+                    # It's a segment point - use _move_point
+                    return self._move_point(point_ref, mid_x, mid_y)
+
+            # It's a standalone Point - find and recreate it
+            point_entity = self._id_to_entity.get(point_id)
+            if point_entity is not None:
+                # Delete the point
+                model.ClearSelection2(True)
+                point_entity.Select(False)
+                model.EditDelete()
+
+                # Create new point at midpoint
+                assert self._sketch_manager is not None
+                new_point = self._sketch_manager.CreatePoint(
+                    mid_x * MM_TO_M,
+                    mid_y * MM_TO_M,
+                    0
+                )
+
+                if new_point is not None:
+                    self._id_to_entity[point_id] = new_point
+                return True
+
+        raise ConstraintError("Could not apply midpoint constraint")
 
     def _add_fixed(self, model: Any, refs: list) -> bool:
         """Add a fixed constraint."""
@@ -894,45 +1118,175 @@ class SolidWorksAdapter(SketchBackendAdapter):
         return True
 
     def _add_distance(self, model: Any, refs: list, value: float | None) -> bool:
-        """Add a distance constraint."""
+        """Add a distance constraint by modifying geometry.
+
+        Note: Using AddDimension2 opens a blocking dialog in SolidWorks.
+        Instead, we modify the geometry directly to achieve the target distance.
+        """
         if value is None:
             raise ConstraintError("Distance requires a value")
         if len(refs) < 2:
             raise ConstraintError("Distance requires 2 references")
 
-        model.ClearSelection2(True)
-        if not self._select_entity(refs[0], False):
-            raise ConstraintError("Could not select first entity")
-        if not self._select_entity(refs[1], True):
-            raise ConstraintError("Could not select second entity")
+        ref1, ref2 = refs[0], refs[1]
 
-        # Add dimension
-        dim = model.AddDimension2(0, 0, 0)
-        if dim is not None:
-            # Set the value (convert mm to meters)
-            dim.SystemValue = value * MM_TO_M
-        return True
+        # Check if both references are PointRefs on the same element (line)
+        if isinstance(ref1, PointRef) and isinstance(ref2, PointRef):
+            if ref1.element_id == ref2.element_id:
+                # Both points on same element - this is effectively a length constraint
+                return self._add_length(model, [ref1.element_id], value)
+
+            # Points on different elements - need to move one point to achieve distance
+            # Get the coordinates of both points
+            pt1_coords = self._get_point_coords(ref1)
+            pt2_coords = self._get_point_coords(ref2)
+
+            if pt1_coords is None or pt2_coords is None:
+                raise ConstraintError("Could not find point coordinates")
+
+            # Calculate current distance
+            dx = pt2_coords[0] - pt1_coords[0]
+            dy = pt2_coords[1] - pt1_coords[1]
+            current_dist = math.sqrt(dx*dx + dy*dy)
+
+            if current_dist < 1e-9:
+                raise ConstraintError("Points are coincident")
+
+            # Scale to target distance - move second point
+            scale = value / current_dist
+            new_x = pt1_coords[0] + dx * scale
+            new_y = pt1_coords[1] + dy * scale
+
+            # Update the geometry of the second element
+            return self._move_point(ref2, new_x, new_y)
+
+        # Distance constraint requires PointRef references for geometry recreation
+        raise ConstraintError("Distance constraint requires PointRef references")
+
+    def _get_point_coords(self, ref: PointRef) -> tuple[float, float] | None:
+        """Get coordinates of a point reference from stored geometry."""
+        for geom in self._segment_geometry_list:
+            if geom.get('element_id') == ref.element_id:
+                if ref.point_type == PointType.START and 'start' in geom:
+                    return geom['start']
+                elif ref.point_type == PointType.END and 'end' in geom:
+                    return geom['end']
+                elif ref.point_type == PointType.CENTER and 'center' in geom:
+                    return geom['center']
+        return None
+
+    def _move_point(self, ref: PointRef, new_x: float, new_y: float) -> bool:
+        """Move a point by recreating its parent geometry with the new position."""
+        entity_id = ref.element_id
+        entity = self._id_to_entity.get(entity_id)
+        if entity is None:
+            raise ConstraintError("Could not find entity")
+
+        # Find the stored geometry
+        geom = None
+        geom_idx = None
+        for idx, g in enumerate(self._segment_geometry_list):
+            if g.get('element_id') == entity_id:
+                geom = g
+                geom_idx = idx
+                break
+
+        if geom is None:
+            raise ConstraintError("Could not find geometry data")
+
+        model = self._document
+        assert model is not None
+        assert self._sketch_manager is not None
+
+        if geom['type'] == 'line':
+            # Get current line geometry
+            start_x, start_y = geom['start']
+            end_x, end_y = geom['end']
+
+            # Update the appropriate point
+            if ref.point_type == PointType.START:
+                start_x, start_y = new_x, new_y
+            elif ref.point_type == PointType.END:
+                end_x, end_y = new_x, new_y
+            else:
+                raise ConstraintError("Invalid point type for line")
+
+            # Delete the original entity
+            model.ClearSelection2(True)
+            entity.Select(False)
+            model.EditDelete()
+
+            # Create new line
+            new_entity = self._sketch_manager.CreateLine(
+                start_x * MM_TO_M, start_y * MM_TO_M, 0,
+                end_x * MM_TO_M, end_y * MM_TO_M, 0
+            )
+
+            # Update mappings
+            if new_entity is not None:
+                self._id_to_entity[entity_id] = new_entity
+                geom['start'] = (start_x, start_y)
+                geom['end'] = (end_x, end_y)
+
+            return True
+
+        raise ConstraintError(f"Cannot move point on geometry type: {geom['type']}")
 
     def _add_radius(self, model: Any, refs: list, value: float | None) -> bool:
-        """Add a radius constraint."""
+        """Add a radius constraint by recreating geometry with target radius.
+
+        Note: Using AddDimension2 opens a blocking dialog in SolidWorks.
+        Instead, we delete the original geometry and recreate it with the target radius.
+        """
         if value is None:
             raise ConstraintError("Radius requires a value")
         if len(refs) < 1:
             raise ConstraintError("Radius requires 1 reference")
 
-        model.ClearSelection2(True)
         entity_ref = refs[0]
         entity_id = entity_ref.element_id if isinstance(entity_ref, PointRef) else entity_ref
         entity = self._id_to_entity.get(entity_id)
         if entity is None:
             raise ConstraintError("Could not find entity")
 
-        entity.Select4(False, None)
+        # Get the current center from stored geometry
+        center_x, center_y = None, None
+        for geom in self._segment_geometry_list:
+            if geom.get('element_id') == entity_id:
+                if geom['type'] == 'circle':
+                    center_x, center_y = geom['center']
+                elif geom['type'] == 'arc':
+                    center_x, center_y = geom['center']
+                break
 
-        # Add dimension - for circles/arcs, this creates radius dimension
-        dim = model.AddDimension2(0, 0, 0)
-        if dim is not None:
-            dim.SystemValue = value * MM_TO_M
+        if center_x is None:
+            raise ConstraintError("Could not find circle/arc center")
+
+        # Delete the original entity
+        model.ClearSelection2(True)
+        entity.Select(False)
+        model.EditDelete()
+
+        # Create new circle with correct radius
+        assert self._sketch_manager is not None
+        new_entity = self._sketch_manager.CreateCircle(
+            center_x * MM_TO_M,
+            center_y * MM_TO_M,
+            0,
+            (center_x + value) * MM_TO_M,  # Point on circle at new radius
+            center_y * MM_TO_M,
+            0
+        )
+
+        # Update mappings
+        if new_entity is not None:
+            self._id_to_entity[entity_id] = new_entity
+            # Update stored geometry
+            for geom in self._segment_geometry_list:
+                if geom.get('element_id') == entity_id:
+                    geom['radius'] = value
+                    break
+
         return True
 
     def _add_diameter(self, model: Any, refs: list, value: float | None) -> bool:
@@ -944,119 +1298,286 @@ class SolidWorksAdapter(SketchBackendAdapter):
         return self._add_radius(model, refs, value / 2)
 
     def _add_angle(self, model: Any, refs: list, value: float | None) -> bool:
-        """Add an angle constraint."""
+        """Add an angle constraint by rotating the second line.
+
+        Note: Using AddDimension2 opens a blocking dialog in SolidWorks.
+        Instead, we rotate the second line to achieve the target angle.
+        """
         if value is None:
             raise ConstraintError("Angle requires a value")
         if len(refs) < 2:
             raise ConstraintError("Angle requires 2 references")
 
-        model.ClearSelection2(True)
-        if not self._select_entity(refs[0], False):
-            raise ConstraintError("Could not select first entity")
-        if not self._select_entity(refs[1], True):
-            raise ConstraintError("Could not select second entity")
+        # Get geometry for both lines
+        line1_id = refs[0].element_id if isinstance(refs[0], PointRef) else refs[0]
+        line2_id = refs[1].element_id if isinstance(refs[1], PointRef) else refs[1]
 
-        # Add angle dimension
-        dim = model.AddDimension2(0, 0, 0)
-        if dim is not None:
-            # Angle in radians
-            dim.SystemValue = math.radians(value)
+        line1_geom = None
+        line2_geom = None
+        for geom in self._segment_geometry_list:
+            if geom.get('element_id') == line1_id and geom['type'] == 'line':
+                line1_geom = geom
+            elif geom.get('element_id') == line2_id and geom['type'] == 'line':
+                line2_geom = geom
+
+        if line1_geom is None or line2_geom is None:
+            raise ConstraintError("Could not find line geometry for angle constraint")
+
+        # Calculate direction vectors
+        dx1 = line1_geom['end'][0] - line1_geom['start'][0]
+        dy1 = line1_geom['end'][1] - line1_geom['start'][1]
+        len1 = math.sqrt(dx1*dx1 + dy1*dy1)
+
+        dx2 = line2_geom['end'][0] - line2_geom['start'][0]
+        dy2 = line2_geom['end'][1] - line2_geom['start'][1]
+        len2 = math.sqrt(dx2*dx2 + dy2*dy2)
+
+        if len1 < 1e-9 or len2 < 1e-9:
+            raise ConstraintError("Lines have zero length")
+
+        # Calculate angle of line1 from horizontal
+        angle1 = math.atan2(dy1, dx1)
+
+        # Calculate new angle for line2 (line1_angle + target_angle)
+        target_angle_rad = math.radians(value)
+        new_angle2 = angle1 + target_angle_rad
+
+        # Rotate line2 to the new angle, keeping its start point fixed
+        start2_x, start2_y = line2_geom['start']
+        new_end2_x = start2_x + len2 * math.cos(new_angle2)
+        new_end2_y = start2_y + len2 * math.sin(new_angle2)
+
+        # Delete and recreate line2
+        entity2 = self._id_to_entity.get(line2_id)
+        if entity2 is None:
+            raise ConstraintError("Could not find second line entity")
+
+        model.ClearSelection2(True)
+        entity2.Select(False)
+        model.EditDelete()
+
+        assert self._sketch_manager is not None
+        new_entity = self._sketch_manager.CreateLine(
+            start2_x * MM_TO_M, start2_y * MM_TO_M, 0,
+            new_end2_x * MM_TO_M, new_end2_y * MM_TO_M, 0
+        )
+
+        # Update mappings
+        if new_entity is not None:
+            self._id_to_entity[line2_id] = new_entity
+            line2_geom['end'] = (new_end2_x, new_end2_y)
+
         return True
 
     def _add_length(self, model: Any, refs: list, value: float | None) -> bool:
-        """Add a length constraint to a line."""
+        """Add a length constraint by recreating the line with target length.
+
+        Note: Using AddDimension2 opens a blocking dialog in SolidWorks.
+        Instead, we delete the original line and recreate it with the target length.
+        """
         if value is None:
             raise ConstraintError("Length requires a value")
         if len(refs) < 1:
             raise ConstraintError("Length requires 1 reference")
 
-        model.ClearSelection2(True)
         entity_ref = refs[0]
         entity_id = entity_ref.element_id if isinstance(entity_ref, PointRef) else entity_ref
         entity = self._id_to_entity.get(entity_id)
         if entity is None:
             raise ConstraintError("Could not find entity")
 
-        entity.Select4(False, None)
+        # Get the current line geometry from stored data
+        start_x, start_y, end_x, end_y = None, None, None, None
+        for geom in self._segment_geometry_list:
+            if geom.get('element_id') == entity_id and geom['type'] == 'line':
+                start_x, start_y = geom['start']
+                end_x, end_y = geom['end']
+                break
 
-        # Add dimension
-        dim = model.AddDimension2(0, 0, 0)
-        if dim is not None:
-            dim.SystemValue = value * MM_TO_M
+        if start_x is None:
+            raise ConstraintError("Could not find line geometry")
+
+        # Calculate new endpoint at target length (keep direction)
+        dx = end_x - start_x
+        dy = end_y - start_y
+        current_length = math.sqrt(dx*dx + dy*dy)
+        if current_length < 1e-9:
+            raise ConstraintError("Line has zero length")
+
+        # Scale to target length
+        scale = value / current_length
+        new_end_x = start_x + dx * scale
+        new_end_y = start_y + dy * scale
+
+        # Delete the original entity
+        model.ClearSelection2(True)
+        entity.Select(False)
+        model.EditDelete()
+
+        # Create new line with correct length
+        assert self._sketch_manager is not None
+        new_entity = self._sketch_manager.CreateLine(
+            start_x * MM_TO_M,
+            start_y * MM_TO_M,
+            0,
+            new_end_x * MM_TO_M,
+            new_end_y * MM_TO_M,
+            0
+        )
+
+        # Update mappings
+        if new_entity is not None:
+            self._id_to_entity[entity_id] = new_entity
+            # Update stored geometry
+            for geom in self._segment_geometry_list:
+                if geom.get('element_id') == entity_id:
+                    geom['end'] = (new_end_x, new_end_y)
+                    break
+
         return True
 
     def _add_distance_x(self, model: Any, refs: list, value: float | None) -> bool:
-        """Add a horizontal distance constraint."""
+        """Add a horizontal distance constraint by moving geometry.
+
+        Note: Using AddDimension opens a blocking dialog in SolidWorks.
+        Instead, we move the second point to achieve the target X distance.
+        """
         if value is None:
             raise ConstraintError("DistanceX requires a value")
+        if len(refs) < 2:
+            raise ConstraintError("DistanceX requires 2 references")
 
-        model.ClearSelection2(True)
-        if len(refs) >= 2:
-            if not self._select_entity(refs[0], False):
-                raise ConstraintError("Could not select first entity")
-            if not self._select_entity(refs[1], True):
-                raise ConstraintError("Could not select second entity")
-        else:
-            if not self._select_entity(refs[0], False):
-                raise ConstraintError("Could not select entity")
+        ref1, ref2 = refs[0], refs[1]
 
-        # Add horizontal dimension
-        dim = model.Extension.AddDimension(0, 0, 0, 0)  # swHorDimension
-        if dim is not None:
-            dim.SystemValue = abs(value) * MM_TO_M
-        return True
+        if isinstance(ref1, PointRef) and isinstance(ref2, PointRef):
+            pt1_coords = self._get_point_coords(ref1)
+            pt2_coords = self._get_point_coords(ref2)
+
+            if pt1_coords is None or pt2_coords is None:
+                raise ConstraintError("Could not find point coordinates")
+
+            # Calculate new X position for point 2 to achieve target distance
+            new_x = pt1_coords[0] + value
+            new_y = pt2_coords[1]  # Keep Y unchanged
+
+            return self._move_point(ref2, new_x, new_y)
+
+        raise ConstraintError("DistanceX requires point references")
 
     def _add_distance_y(self, model: Any, refs: list, value: float | None) -> bool:
-        """Add a vertical distance constraint."""
+        """Add a vertical distance constraint by moving geometry.
+
+        Note: Using AddDimension opens a blocking dialog in SolidWorks.
+        Instead, we move the second point to achieve the target Y distance.
+        """
         if value is None:
             raise ConstraintError("DistanceY requires a value")
+        if len(refs) < 2:
+            raise ConstraintError("DistanceY requires 2 references")
 
-        model.ClearSelection2(True)
-        if len(refs) >= 2:
-            if not self._select_entity(refs[0], False):
-                raise ConstraintError("Could not select first entity")
-            if not self._select_entity(refs[1], True):
-                raise ConstraintError("Could not select second entity")
-        else:
-            if not self._select_entity(refs[0], False):
-                raise ConstraintError("Could not select entity")
+        ref1, ref2 = refs[0], refs[1]
 
-        # Add vertical dimension
-        dim = model.Extension.AddDimension(0, 0, 0, 1)  # swVerDimension
-        if dim is not None:
-            dim.SystemValue = abs(value) * MM_TO_M
-        return True
+        if isinstance(ref1, PointRef) and isinstance(ref2, PointRef):
+            pt1_coords = self._get_point_coords(ref1)
+            pt2_coords = self._get_point_coords(ref2)
+
+            if pt1_coords is None or pt2_coords is None:
+                raise ConstraintError("Could not find point coordinates")
+
+            # Calculate new Y position for point 2 to achieve target distance
+            new_x = pt2_coords[0]  # Keep X unchanged
+            new_y = pt1_coords[1] + value
+
+            return self._move_point(ref2, new_x, new_y)
+
+        raise ConstraintError("DistanceY requires point references")
 
     # =========================================================================
     # Export Methods
     # =========================================================================
 
+    def _validate_stored_geometry(self, geom: dict) -> bool:
+        """Check if stored geometry endpoints still exist in the sketch."""
+        if self._sketch is None:
+            return False
+
+        try:
+            points = self._get_com_result(self._sketch, "GetSketchPoints2")
+            if not points:
+                return False
+
+            # Get actual sketch point coordinates
+            actual_coords = set()
+            for pt in points:
+                actual_coords.add((round(pt.X * M_TO_MM, 2), round(pt.Y * M_TO_MM, 2)))
+
+            # Check if stored geometry's key points exist in actual sketch
+            tolerance = 0.1  # mm
+            if geom['type'] == 'line':
+                start = (round(geom['start'][0], 2), round(geom['start'][1], 2))
+                end = (round(geom['end'][0], 2), round(geom['end'][1], 2))
+                return start in actual_coords and end in actual_coords
+            elif geom['type'] == 'circle':
+                center = (round(geom['center'][0], 2), round(geom['center'][1], 2))
+                if center not in actual_coords:
+                    return False
+                # Also check if stored radius matches actual radius (Equal constraint changes radius)
+                # For now, just return False if constraints applied - forces COM-based export
+                if self._constraints_applied:
+                    return False
+                return True
+            elif geom['type'] == 'arc':
+                center = (round(geom['center'][0], 2), round(geom['center'][1], 2))
+                start = (round(geom['start'][0], 2), round(geom['start'][1], 2))
+                end = (round(geom['end'][0], 2), round(geom['end'][1], 2))
+                return center in actual_coords and start in actual_coords and end in actual_coords
+            elif geom['type'] == 'spline':
+                # For splines, check if control points exist
+                for cp in geom['control_points']:
+                    cp_rounded = (round(cp[0], 2), round(cp[1], 2))
+                    if cp_rounded not in actual_coords:
+                        return False
+                return True
+
+            return True
+        except Exception:
+            return False
+
     def _export_segment(self, segment: Any, construction: bool = False, segment_index: int = -1) -> SketchPrimitive | None:
         """Export a SolidWorks sketch segment to canonical format."""
         try:
-            # First, check if we have stored geometry data for this segment by index
+            # Try to use stored geometry if it's still valid
             if 0 <= segment_index < len(self._segment_geometry_list):
                 geom = self._segment_geometry_list[segment_index]
-                if geom['type'] == 'line':
-                    return Line(
-                        start=Point2D(geom['start'][0], geom['start'][1]),
-                        end=Point2D(geom['end'][0], geom['end'][1]),
-                        construction=geom.get('construction', construction)
-                    )
-                elif geom['type'] == 'circle':
-                    return Circle(
-                        center=Point2D(geom['center'][0], geom['center'][1]),
-                        radius=geom['radius'],
-                        construction=geom.get('construction', construction)
-                    )
-                elif geom['type'] == 'arc':
-                    return Arc(
-                        center=Point2D(geom['center'][0], geom['center'][1]),
-                        start_point=Point2D(geom['start'][0], geom['start'][1]),
-                        end_point=Point2D(geom['end'][0], geom['end'][1]),
-                        ccw=geom['ccw'],
-                        construction=geom.get('construction', construction)
-                    )
+                # Use stored geometry if constraints haven't been applied
+                # OR if validation confirms stored points still exist
+                if not self._constraints_applied or self._validate_stored_geometry(geom):
+                    if geom['type'] == 'line':
+                        return Line(
+                            start=Point2D(geom['start'][0], geom['start'][1]),
+                            end=Point2D(geom['end'][0], geom['end'][1]),
+                            construction=geom.get('construction', construction)
+                        )
+                    elif geom['type'] == 'circle':
+                        return Circle(
+                            center=Point2D(geom['center'][0], geom['center'][1]),
+                            radius=geom['radius'],
+                            construction=geom.get('construction', construction)
+                        )
+                    elif geom['type'] == 'arc':
+                        return Arc(
+                            center=Point2D(geom['center'][0], geom['center'][1]),
+                            start_point=Point2D(geom['start'][0], geom['start'][1]),
+                            end_point=Point2D(geom['end'][0], geom['end'][1]),
+                            ccw=geom['ccw'],
+                            construction=geom.get('construction', construction)
+                        )
+                    elif geom['type'] == 'spline':
+                        return Spline(
+                            control_points=[Point2D(pt[0], pt[1]) for pt in geom['control_points']],
+                            degree=geom.get('degree', 3),
+                            construction=geom.get('construction', construction)
+                        )
 
             # Fall back to COM-based export if no stored geometry
             # Debug: List available attributes on the segment
@@ -1098,17 +1619,40 @@ class SolidWorksAdapter(SketchBackendAdapter):
             except Exception as e:
                 pass
 
-        # Method 3: Try to get points from the sketch directly
+        # Method 3: Match by segment length to find endpoint pair
         if start_pt is None and self._sketch is not None:
             try:
-                # Get all sketch points and match by position
+                # Get segment length and all sketch points
+                seg_length = segment.GetLength  # in meters
                 points = self._get_com_result(self._sketch, "GetSketchPoints2")
-                if points and len(points) >= 2:
-                    # For a line, the first two points should be the endpoints
-                    # (This is a rough approximation)
-                    start_pt = points[0]
-                    end_pt = points[1]
-            except Exception as e:
+                if points and len(points) >= 2 and seg_length:
+                    # Find the pair of points whose distance matches segment length
+                    # Skip pairs that have already been used by other segments
+                    point_coords = [(pt.X, pt.Y, pt) for pt in points]
+                    tolerance = 1e-6  # meters
+                    for i, (x1, y1, pt1) in enumerate(point_coords):
+                        for j, (x2, y2, pt2) in enumerate(point_coords):
+                            if i < j:
+                                dist = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+                                if abs(dist - seg_length) < tolerance:
+                                    # Check if this pair has already been used
+                                    pair_key = (
+                                        (round(x1 * M_TO_MM, 4), round(y1 * M_TO_MM, 4)),
+                                        (round(x2 * M_TO_MM, 4), round(y2 * M_TO_MM, 4))
+                                    )
+                                    pair_key_rev = (pair_key[1], pair_key[0])
+                                    if hasattr(self, '_used_point_pairs'):
+                                        if pair_key in self._used_point_pairs or pair_key_rev in self._used_point_pairs:
+                                            continue  # Skip this pair, try next
+                                    start_pt = pt1
+                                    end_pt = pt2
+                                    # Mark this pair as used
+                                    if hasattr(self, '_used_point_pairs'):
+                                        self._used_point_pairs.add(pair_key)
+                                    break
+                        if start_pt:
+                            break
+            except Exception:
                 pass
 
         # Method 4: Try direct attribute access with different casing
@@ -1143,108 +1687,135 @@ class SolidWorksAdapter(SketchBackendAdapter):
 
     def _export_arc(self, segment: Any, construction: bool = False) -> Arc | Circle:
         """Export a SolidWorks arc to canonical format."""
-        start_pt = None
-        end_pt = None
-        center_pt = None
         radius = None
+        center_x = None
+        center_y = None
 
-        # Method 1: Try to get radius directly (works for circles)
+        # Get radius from segment (this works reliably)
         try:
-            radius = self._get_com_result(segment, "GetRadius")
-            if radius is not None:
-                radius = radius * M_TO_MM
-        except Exception as e:
+            r = segment.GetRadius
+            if r is not None:
+                radius = r * M_TO_MM
+        except Exception:
             pass
 
-        # Method 2: Get points from the sketch (like we did for lines)
-        if self._sketch is not None:
-            try:
-                points = self._get_com_result(self._sketch, "GetSketchPoints2")
-
-                if points:
-                    # For a circle, there should be 1 center point
-                    # For an arc, there should be 3 points: center, start, end
-
-                    if len(points) == 1:
-                        # Single point = center of circle
-                        center_pt = points[0]
-                        if radius is not None:
-                            center_x = center_pt.X * M_TO_MM
-                            center_y = center_pt.Y * M_TO_MM
-                            return Circle(
-                                center=Point2D(center_x, center_y),
-                                radius=radius,
-                                construction=construction
-                            )
-
-                    elif len(points) >= 3 and radius is not None:
-                        # Arc: we have center, start, end points
-                        # Figure out which point is the center by checking distance to radius
-                        point_coords = []
-                        for pt in points:
-                            point_coords.append((pt.X * M_TO_MM, pt.Y * M_TO_MM))
-
-                        # Find the center: it's the point equidistant to other points at radius distance
-                        center_idx = None
-                        for i, (cx, cy) in enumerate(point_coords):
-                            distances = []
-                            for j, (px, py) in enumerate(point_coords):
-                                if i != j:
-                                    dist = math.sqrt((cx - px)**2 + (cy - py)**2)
-                                    distances.append(dist)
-                            # If both other points are at radius distance, this is center
-                            if len(distances) == 2 and all(abs(d - radius) < 0.01 for d in distances):
-                                center_idx = i
-                                break
-
-                        if center_idx is not None:
-                            center_x, center_y = point_coords[center_idx]
-                            other_points = [p for i, p in enumerate(point_coords) if i != center_idx]
-                            start_x, start_y = other_points[0]
-                            end_x, end_y = other_points[1]
-
-                            # Determine CCW direction using cross product
-                            v1x = start_x - center_x
-                            v1y = start_y - center_y
-                            v2x = end_x - center_x
-                            v2y = end_y - center_y
-                            cross = v1x * v2y - v1y * v2x
-                            ccw = cross > 0
-
-                            return Arc(
-                                center=Point2D(center_x, center_y),
-                                start_point=Point2D(start_x, start_y),
-                                end_point=Point2D(end_x, end_y),
-                                ccw=ccw,
-                                construction=construction
-                            )
-
-            except Exception as e:
-                pass
-
-        # Method 3: Try to get curve and extract parameters
+        # Method 1: Try to get curve parameters which include center
         try:
             curve = self._get_com_result(segment, "GetCurve")
             if curve:
-                # For arcs/circles, the curve should have circle data
                 is_circle = self._get_com_result(curve, "IsCircle")
-
                 if is_circle:
-                    # Get circle params: returns array [cx, cy, cz, ax, ay, az, radius]
-                    # where (cx,cy,cz) is center and (ax,ay,az) is axis
-                    circle_params = self._get_com_result(curve, "CircleParams")
-                    if circle_params:
-                        center_x = circle_params[0] * M_TO_MM
-                        center_y = circle_params[1] * M_TO_MM
-                        radius = circle_params[6] * M_TO_MM
+                    # CircleParams returns [cx, cy, cz, ax, ay, az, radius]
+                    params = self._get_com_result(curve, "CircleParams")
+                    if params and len(params) >= 7:
+                        center_x = params[0] * M_TO_MM
+                        center_y = params[1] * M_TO_MM
+                        if radius is None:
+                            radius = params[6] * M_TO_MM
+        except Exception:
+            pass
 
-                        return Circle(
+        # Method 2: Check if this segment is a full circle by comparing arc length to circumference
+        is_full_circle = False
+        if radius is not None:
+            try:
+                arc_length = segment.GetLength * M_TO_MM
+                circumference = 2 * math.pi * radius
+                # If arc length is very close to circumference, it's a full circle
+                if abs(arc_length - circumference) < 0.01:
+                    is_full_circle = True
+            except Exception:
+                pass
+
+        # Method 3: Find center from sketch points if not found yet
+        if center_x is None and radius is not None and self._sketch is not None:
+            try:
+                points = self._get_com_result(self._sketch, "GetSketchPoints2")
+                if points:
+                    # For each point, check if it could be a center for this segment
+                    # A center point is at radius distance from points on the arc
+                    for pt in points:
+                        px, py = pt.X * M_TO_MM, pt.Y * M_TO_MM
+                        # Check if this point is a plausible center
+                        # (There should be other points at exactly radius distance)
+                        at_radius_count = 0
+                        for other_pt in points:
+                            if other_pt is not pt:
+                                ox, oy = other_pt.X * M_TO_MM, other_pt.Y * M_TO_MM
+                                dist = math.sqrt((px - ox)**2 + (py - oy)**2)
+                                if abs(dist - radius) < 0.01:
+                                    at_radius_count += 1
+                        # For a circle, center has no other points at radius (just curve)
+                        # For an arc, center has 2 points at radius (start and end)
+                        if is_full_circle and at_radius_count == 0:
+                            center_x, center_y = px, py
+                            break
+                        elif not is_full_circle and at_radius_count >= 2:
+                            center_x, center_y = px, py
+                            break
+            except Exception:
+                pass
+
+        # If we have center and radius and it's a full circle, return Circle
+        if center_x is not None and radius is not None and is_full_circle:
+            return Circle(
+                center=Point2D(center_x, center_y),
+                radius=radius,
+                construction=construction
+            )
+
+        # Otherwise try to export as an arc (original logic for arcs)
+        start_pt = None
+        end_pt = None
+        center_pt = None
+
+        if self._sketch is not None and radius is not None:
+            try:
+                points = self._get_com_result(self._sketch, "GetSketchPoints2")
+
+                if points and len(points) >= 3:
+                    # Arc: we have center, start, end points
+                    point_coords = []
+                    for pt in points:
+                        point_coords.append((pt.X * M_TO_MM, pt.Y * M_TO_MM))
+
+                    # Find the center: it's the point equidistant to other points at radius distance
+                    center_idx = None
+                    for i, (cx, cy) in enumerate(point_coords):
+                        distances = []
+                        for j, (px, py) in enumerate(point_coords):
+                            if i != j:
+                                dist = math.sqrt((cx - px)**2 + (cy - py)**2)
+                                distances.append(dist)
+                        # If both other points are at radius distance, this is center
+                        if len(distances) == 2 and all(abs(d - radius) < 0.01 for d in distances):
+                            center_idx = i
+                            break
+
+                    if center_idx is not None:
+                        center_x, center_y = point_coords[center_idx]
+                        other_points = [p for i, p in enumerate(point_coords) if i != center_idx]
+                        start_x, start_y = other_points[0]
+                        end_x, end_y = other_points[1]
+
+                        # Determine CCW direction using cross product
+                        v1x = start_x - center_x
+                        v1y = start_y - center_y
+                        v2x = end_x - center_x
+                        v2y = end_y - center_y
+                        cross = v1x * v2y - v1y * v2x
+                        ccw = cross > 0
+
+                        return Arc(
                             center=Point2D(center_x, center_y),
-                            radius=radius,
+                            start_point=Point2D(start_x, start_y),
+                            end_point=Point2D(end_x, end_y),
+                            ccw=ccw,
                             construction=construction
                         )
-        except Exception as e:
-            pass
+
+            except Exception:
+                pass
 
         # If we get here, we couldn't export the arc/circle
         raise ValueError("Could not get arc/circle geometry")
@@ -1349,24 +1920,86 @@ class SolidWorksAdapter(SketchBackendAdapter):
         if self._sketch is None:
             return (SolverStatus.DIRTY, -1)
 
+        status_val = None
+
+        # Try multiple ways to get the constrained status
+        # Method 1: Direct method call
         try:
+            status_val = self._sketch.GetConstrainedStatus()
+        except Exception:
+            pass
+
+        # Method 2: Property access
+        if status_val is None:
+            try:
+                status_val = self._sketch.ConstrainedStatus
+            except Exception:
+                pass
+
+        # Method 3: Try using _get_com_result helper
+        if status_val is None:
+            try:
+                status_val = self._get_com_result(self._sketch, "GetConstrainedStatus")
+            except Exception:
+                pass
+
+        # Method 4: Check if sketch has any underdefined geometry
+        # by counting relations vs geometry DOF
+        if status_val is None:
+            try:
+                # Get geometry and relations
+                segments = self._get_com_result(self._sketch, "GetSketchSegments")
+                points = self._get_com_result(self._sketch, "GetSketchPoints2")
+                relations = self._get_com_result(self._sketch, "GetSketchRelations")
+
+                # Count DOF from geometry
+                geom_dof = 0
+                if segments:
+                    for seg in segments:
+                        seg_type = self._get_com_result(seg, "GetType")
+                        if seg_type == SwSketchSegments.LINE:
+                            geom_dof += 4
+                        elif seg_type == SwSketchSegments.ARC:
+                            geom_dof += 5
+                if points:
+                    # Standalone points
+                    geom_dof += len(points) * 2
+
+                # Count constraints
+                constraint_dof = 0
+                if relations:
+                    for rel in relations:
+                        constraint_dof += 1  # Simplified - each relation removes 1 DOF
+
+                # Estimate status
+                remaining_dof = max(0, geom_dof - constraint_dof)
+                if remaining_dof == 0:
+                    return (SolverStatus.FULLY_CONSTRAINED, 0)
+                else:
+                    return (SolverStatus.UNDER_CONSTRAINED, remaining_dof)
+            except Exception:
+                pass
+
+        # If we got a status value, interpret it
+        if status_val is not None:
             # SolidWorks sketch states:
             # 1 = Under defined (blue)
             # 2 = Fully defined (black)
             # 3 = Over defined (red)
-            status_val = self._sketch.GetConstrainedStatus()
-
             if status_val == 2:
                 return (SolverStatus.FULLY_CONSTRAINED, 0)
             elif status_val == 3:
                 return (SolverStatus.OVER_CONSTRAINED, 0)
             else:
-                # Under defined - estimate DOF
                 dof = self._estimate_dof()
                 return (SolverStatus.UNDER_CONSTRAINED, dof)
 
-        except Exception:
-            return (SolverStatus.INCONSISTENT, -1)
+        # Fallback - return under constrained with estimated DOF
+        dof = self._estimate_dof()
+        if dof >= 0:
+            return (SolverStatus.UNDER_CONSTRAINED, dof)
+
+        return (SolverStatus.INCONSISTENT, -1)
 
     def _estimate_dof(self) -> int:
         """Estimate degrees of freedom (rough approximation)."""

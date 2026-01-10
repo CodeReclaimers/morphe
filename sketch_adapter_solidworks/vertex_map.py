@@ -34,61 +34,66 @@ def get_sketch_point_from_entity(entity: Any, point_type: PointType) -> Any:
     """
     entity_type = _get_entity_type(entity)
 
-    if entity_type == "SketchLine":
-        if point_type == PointType.START:
-            return entity.GetStartPoint2()
-        elif point_type == PointType.END:
-            return entity.GetEndPoint2()
-        else:
-            raise ValueError(f"Invalid point type {point_type} for SketchLine")
+    # Try direct COM methods first
+    try:
+        if entity_type == "SketchLine":
+            if point_type == PointType.START:
+                return entity.GetStartPoint2()
+            elif point_type == PointType.END:
+                return entity.GetEndPoint2()
+            else:
+                raise ValueError(f"Invalid point type {point_type} for SketchLine")
 
-    elif entity_type == "SketchArc":
-        if point_type == PointType.START:
-            return entity.GetStartPoint2()
-        elif point_type == PointType.END:
-            return entity.GetEndPoint2()
-        elif point_type == PointType.CENTER:
-            return entity.GetCenterPoint2()
-        else:
-            raise ValueError(f"Invalid point type {point_type} for SketchArc")
+        elif entity_type == "SketchArc":
+            if point_type == PointType.START:
+                return entity.GetStartPoint2()
+            elif point_type == PointType.END:
+                return entity.GetEndPoint2()
+            elif point_type == PointType.CENTER:
+                return entity.GetCenterPoint2()
+            else:
+                raise ValueError(f"Invalid point type {point_type} for SketchArc")
 
-    elif entity_type == "SketchCircle":
-        if point_type == PointType.CENTER:
-            return entity.GetCenterPoint2()
-        else:
-            raise ValueError(f"Invalid point type {point_type} for SketchCircle")
+        elif entity_type == "SketchCircle":
+            if point_type == PointType.CENTER:
+                return entity.GetCenterPoint2()
+            else:
+                raise ValueError(f"Invalid point type {point_type} for SketchCircle")
 
-    elif entity_type == "SketchPoint":
-        if point_type == PointType.CENTER:
-            return entity
-        else:
-            raise ValueError(f"Invalid point type {point_type} for SketchPoint")
+        elif entity_type == "SketchPoint":
+            if point_type == PointType.CENTER:
+                return entity
+            else:
+                raise ValueError(f"Invalid point type {point_type} for SketchPoint")
 
-    elif entity_type == "SketchSpline":
-        if point_type == PointType.START:
-            points = entity.GetPoints2()
-            if points and len(points) >= 3:
-                # Points are returned as flat array [x1,y1,z1, x2,y2,z2, ...]
-                return _create_point_from_coords(entity, points[0], points[1], points[2])
-            return None
-        elif point_type == PointType.END:
-            points = entity.GetPoints2()
-            if points and len(points) >= 3:
-                return _create_point_from_coords(
-                    entity, points[-3], points[-2], points[-1]
-                )
-            return None
-        else:
-            raise ValueError(f"Invalid point type {point_type} for SketchSpline")
+        elif entity_type == "SketchSpline":
+            if point_type == PointType.START:
+                points = entity.GetPoints2()
+                if points and len(points) >= 3:
+                    return _create_point_from_coords(entity, points[0], points[1], points[2])
+                return None
+            elif point_type == PointType.END:
+                points = entity.GetPoints2()
+                if points and len(points) >= 3:
+                    return _create_point_from_coords(entity, points[-3], points[-2], points[-1])
+                return None
+            else:
+                raise ValueError(f"Invalid point type {point_type} for SketchSpline")
 
-    elif entity_type == "SketchEllipse":
-        if point_type == PointType.CENTER:
-            return entity.GetCenterPoint2()
-        else:
-            raise ValueError(f"Invalid point type {point_type} for SketchEllipse")
+        elif entity_type == "SketchEllipse":
+            if point_type == PointType.CENTER:
+                return entity.GetCenterPoint2()
+            else:
+                raise ValueError(f"Invalid point type {point_type} for SketchEllipse")
 
-    else:
-        raise ValueError(f"Unknown entity type: {entity_type}")
+        else:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+
+    except Exception:
+        # COM methods may not be available in late binding
+        # or may fail with com_error
+        # Return None and let caller handle it
+        return None
 
 
 def get_point_type_for_sketch_point(entity: Any, sketch_point: Any) -> PointType | None:

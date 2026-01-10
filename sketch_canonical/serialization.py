@@ -148,6 +148,7 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
     source = data.get("source")
     confidence = data.get("confidence", 1.0)
 
+    prim: SketchPrimitive
     if prim_type == "line":
         start = _parse_point(data.get("start", [0, 0]))
         end = _parse_point(data.get("end", [0, 0]))
@@ -214,16 +215,16 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
     return prim
 
 
-def constraint_to_dict(c: SketchConstraint) -> dict:
+def constraint_to_dict(c: SketchConstraint) -> dict[str, Any]:
     """Convert a constraint to a dictionary."""
-    refs = []
+    refs: list[dict[str, Any] | str] = []
     for r in c.references:
         if isinstance(r, PointRef):
             refs.append(point_ref_to_dict(r))
         else:
             refs.append(r)
 
-    result = {
+    result: dict[str, Any] = {
         "id": c.id,
         "type": c.constraint_type.value,
         "references": refs,
@@ -251,9 +252,9 @@ def constraint_to_dict(c: SketchConstraint) -> dict:
     return result
 
 
-def dict_to_constraint(data: dict) -> SketchConstraint:
+def dict_to_constraint(data: dict[str, Any]) -> SketchConstraint:
     """Convert a dictionary to a constraint."""
-    refs = []
+    refs: list[str | PointRef] = []
     for r in data.get("references", []):
         if isinstance(r, dict):
             refs.append(dict_to_point_ref(r))
@@ -281,9 +282,9 @@ def dict_to_constraint(data: dict) -> SketchConstraint:
     )
 
 
-def point_ref_to_dict(ref: PointRef) -> dict:
+def point_ref_to_dict(ref: PointRef) -> dict[str, Any]:
     """Convert a PointRef to a dictionary."""
-    result = {
+    result: dict[str, Any] = {
         "element": ref.element_id,
         "point": ref.point_type.value,
     }

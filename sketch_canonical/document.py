@@ -47,9 +47,9 @@ class SketchDocument:
         ElementPrefix.SPLINE: 0
     })
 
-    def _get_prefix_for_type(self, primitive_type: type) -> str:
+    def _get_prefix_for_type(self, primitive_type: type[SketchPrimitive]) -> str:
         """Get the ID prefix for a primitive type."""
-        prefix_map = {
+        prefix_map: dict[type[SketchPrimitive], str] = {
             Line: ElementPrefix.LINE,
             Arc: ElementPrefix.ARC,
             Circle: ElementPrefix.CIRCLE,

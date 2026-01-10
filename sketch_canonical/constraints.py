@@ -347,7 +347,7 @@ def Distance(pt1: PointRef, pt2: PointRef, value: float, **kwargs) -> SketchCons
 
 def DistanceX(pt: PointRef, value: float, pt2: PointRef | None = None, **kwargs) -> SketchConstraint:
     """Create a horizontal distance constraint."""
-    refs = [pt] if pt2 is None else [pt, pt2]
+    refs: list[str | PointRef] = [pt] if pt2 is None else [pt, pt2]
     return SketchConstraint(
         id=kwargs.pop('id', _generate_id()),
         constraint_type=ConstraintType.DISTANCE_X,
@@ -359,7 +359,7 @@ def DistanceX(pt: PointRef, value: float, pt2: PointRef | None = None, **kwargs)
 
 def DistanceY(pt: PointRef, value: float, pt2: PointRef | None = None, **kwargs) -> SketchConstraint:
     """Create a vertical distance constraint."""
-    refs = [pt] if pt2 is None else [pt, pt2]
+    refs: list[str | PointRef] = [pt] if pt2 is None else [pt, pt2]
     return SketchConstraint(
         id=kwargs.pop('id', _generate_id()),
         constraint_type=ConstraintType.DISTANCE_Y,

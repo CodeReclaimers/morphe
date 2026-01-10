@@ -29,15 +29,47 @@ Example usage (within Fusion 360):
     # Export back to canonical format
     exported_doc = adapter.export_sketch()
 
+RPC Server (run inside Fusion 360 as script/add-in):
+    from sketch_adapter_fusion import start_server
+    start_server()  # Starts on localhost:9879
+
+RPC Client (connect from external Python):
+    from sketch_adapter_fusion import FusionClient
+    client = FusionClient()
+    if client.connect():
+        sketches = client.list_sketches()
+
 Note: This adapter must be run within Fusion 360's Python environment
 where the 'adsk' module is available.
 """
 
 from .adapter import FusionAdapter
+from .client import FusionClient, check_server, quick_export, quick_import
+from .server import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    is_server_running,
+    start_server,
+    stop_server,
+    toggle_server,
+)
 from .vertex_map import VertexMap, get_point_from_sketch_entity
 
 __all__ = [
+    # Adapter
     "FusionAdapter",
     "VertexMap",
     "get_point_from_sketch_entity",
+    # Server (run inside Fusion 360)
+    "start_server",
+    "stop_server",
+    "toggle_server",
+    "is_server_running",
+    "DEFAULT_HOST",
+    "DEFAULT_PORT",
+    # Client (connect from external Python)
+    "FusionClient",
+    "check_server",
+    "quick_export",
+    "quick_import",
 ]

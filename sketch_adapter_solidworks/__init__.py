@@ -27,6 +27,16 @@ Example usage (on Windows with SolidWorks installed):
     # Export back to canonical format
     exported_doc = adapter.export_sketch()
 
+RPC Server (run as external process with SolidWorks running):
+    from sketch_adapter_solidworks import start_server
+    start_server()  # Starts on localhost:9878
+
+RPC Client (connect to server):
+    from sketch_adapter_solidworks import SolidWorksClient
+    client = SolidWorksClient()
+    if client.connect():
+        sketches = client.list_sketches()
+
 Requirements:
     - Windows operating system
     - SolidWorks installed
@@ -38,6 +48,15 @@ or start a new one if none is available.
 """
 
 from .adapter import SOLIDWORKS_AVAILABLE, SolidWorksAdapter, get_solidworks_application
+from .client import SolidWorksClient, check_server, quick_export, quick_import
+from .server import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    is_server_running,
+    start_server,
+    stop_server,
+    toggle_server,
+)
 from .vertex_map import (
     get_point_type_for_sketch_point,
     get_sketch_point_from_entity,
@@ -45,10 +64,23 @@ from .vertex_map import (
 )
 
 __all__ = [
+    # Adapter
     "SolidWorksAdapter",
     "SOLIDWORKS_AVAILABLE",
     "get_solidworks_application",
     "get_sketch_point_from_entity",
     "get_point_type_for_sketch_point",
     "get_valid_point_types",
+    # Server (run as external process)
+    "start_server",
+    "stop_server",
+    "toggle_server",
+    "is_server_running",
+    "DEFAULT_HOST",
+    "DEFAULT_PORT",
+    # Client (connect to server)
+    "SolidWorksClient",
+    "check_server",
+    "quick_export",
+    "quick_import",
 ]

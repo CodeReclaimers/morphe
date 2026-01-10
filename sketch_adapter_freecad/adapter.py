@@ -12,31 +12,30 @@ Key FreeCAD specifics:
 """
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from sketch_canonical import (
-    SketchBackendAdapter,
-    SketchDocument,
-    SolverStatus,
-    SketchPrimitive,
-    SketchConstraint,
-    Point2D,
-    PointType,
-    PointRef,
-    Line,
     Arc,
     Circle,
-    Point,
-    Spline,
-    ConstraintType,
-    ConstraintStatus,
-    GeometryError,
     ConstraintError,
-    SketchCreationError,
+    ConstraintType,
     ExportError,
+    GeometryError,
+    Line,
+    Point,
+    Point2D,
+    PointRef,
+    PointType,
+    SketchBackendAdapter,
+    SketchConstraint,
+    SketchCreationError,
+    SketchDocument,
+    SketchPrimitive,
+    SolverStatus,
+    Spline,
 )
 
-from .vertex_map import VertexMap, get_vertex_index, get_point_type_from_vertex
+from .vertex_map import VertexMap, get_point_type_from_vertex, get_vertex_index
 
 # Try to import FreeCAD modules
 FREECAD_AVAILABLE = False
@@ -79,7 +78,7 @@ class FreeCADAdapter(SketchBackendAdapter):
         ConstraintType.CONCENTRIC: 'Coincident',  # Concentric uses Coincident on centers
     }
 
-    def __init__(self, document: Optional[Any] = None):
+    def __init__(self, document: Any | None = None):
         """
         Initialize the FreeCAD adapter.
 
@@ -94,11 +93,11 @@ class FreeCADAdapter(SketchBackendAdapter):
 
         self._document = document
         self._sketch = None
-        self._sketch_doc: Optional[SketchDocument] = None
+        self._sketch_doc: SketchDocument | None = None
 
         # ID to FreeCAD geometry index mapping
-        self._id_to_index: Dict[str, int] = {}
-        self._index_to_id: Dict[int, str] = {}
+        self._id_to_index: dict[str, int] = {}
+        self._index_to_id: dict[int, str] = {}
 
     def _get_document(self) -> Any:
         """Get the FreeCAD document, creating one if needed."""
@@ -114,7 +113,7 @@ class FreeCADAdapter(SketchBackendAdapter):
             raise SketchCreationError("No active sketch. Call create_sketch() first.")
         return self._sketch
 
-    def create_sketch(self, name: str, plane: Optional[Any] = None) -> None:
+    def create_sketch(self, name: str, plane: Any | None = None) -> None:
         """
         Create a new empty sketch in FreeCAD.
 
@@ -298,7 +297,7 @@ class FreeCADAdapter(SketchBackendAdapter):
 
         return sketch.addGeometry(bspline, spline.construction)
 
-    def _extract_knots_and_mults(self, knots: List[float]) -> Tuple[List[float], List[int]]:
+    def _extract_knots_and_mults(self, knots: list[float]) -> tuple[list[float], list[int]]:
         """
         Extract unique knots and multiplicities from an expanded knot vector.
 
@@ -333,7 +332,7 @@ class FreeCADAdapter(SketchBackendAdapter):
 
         return unique_knots, mults
 
-    def _compute_multiplicities(self, spline: Spline) -> List[int]:
+    def _compute_multiplicities(self, spline: Spline) -> list[int]:
         """Compute knot multiplicities from the knot vector."""
         _, mults = self._extract_knots_and_mults(spline.knots)
         return mults
@@ -393,7 +392,7 @@ class FreeCADAdapter(SketchBackendAdapter):
         except Exception as e:
             raise ConstraintError(f"Failed to add constraint: {e}") from e
 
-    def _point_ref_to_freecad(self, ref: PointRef) -> Tuple[int, int]:
+    def _point_ref_to_freecad(self, ref: PointRef) -> tuple[int, int]:
         """
         Convert a PointRef to FreeCAD (geometry_index, vertex_index).
 
@@ -440,7 +439,7 @@ class FreeCADAdapter(SketchBackendAdapter):
         else:
             return 1
 
-    def _get_element_index(self, ref: Union[str, PointRef]) -> int:
+    def _get_element_index(self, ref: str | PointRef) -> int:
         """Get the geometry index for an element reference."""
         if isinstance(ref, PointRef):
             element_id = ref.element_id
@@ -607,7 +606,7 @@ class FreeCADAdapter(SketchBackendAdapter):
                 'Symmetric', idx1, idx2, axis_idx
             ))
 
-    def get_solver_status(self) -> Tuple[SolverStatus, int]:
+    def get_solver_status(self) -> tuple[SolverStatus, int]:
         """Get the constraint solver status."""
         sketch = self._get_active_sketch()
 
@@ -643,8 +642,8 @@ class FreeCADAdapter(SketchBackendAdapter):
             view.setImageSize(width, height)
 
             # Capture to temp file and read bytes
-            import tempfile
             import os
+            import tempfile
 
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
                 temp_path = f.name
@@ -658,9 +657,9 @@ class FreeCADAdapter(SketchBackendAdapter):
             return data
 
         except ImportError:
-            raise ExportError("FreeCADGui not available for image capture")
+            raise ExportError("FreeCADGui not available for image capture") from None
         except Exception as e:
-            raise ExportError(f"Failed to capture image: {e}")
+            raise ExportError(f"Failed to capture image: {e}") from e
 
     def close_sketch(self) -> None:
         """Close the current sketch."""
@@ -671,7 +670,7 @@ class FreeCADAdapter(SketchBackendAdapter):
         self._id_to_index.clear()
         self._index_to_id.clear()
 
-    def get_element_by_id(self, element_id: str) -> Optional[Any]:
+    def get_element_by_id(self, element_id: str) -> Any | None:
         """Get the FreeCAD geometry object for a canonical element ID."""
         if element_id not in self._id_to_index:
             return None
@@ -694,7 +693,7 @@ class FreeCADAdapter(SketchBackendAdapter):
 
     # Export helpers
 
-    def _geometry_to_primitive(self, geo: Any, index: int) -> Optional[SketchPrimitive]:
+    def _geometry_to_primitive(self, geo: Any, index: int) -> SketchPrimitive | None:
         """Convert FreeCAD geometry to canonical primitive."""
         geo_type = type(geo).__name__
         # Construction flag is stored on the sketch, not the geometry
@@ -751,7 +750,7 @@ class FreeCADAdapter(SketchBackendAdapter):
             # Expand knots with multiplicities
             mults = geo.getMultiplicities()
             full_knots = []
-            for k, m in zip(knots, mults):
+            for k, m in zip(knots, mults, strict=False):
                 full_knots.extend([k] * m)
 
             return Spline(
@@ -765,7 +764,7 @@ class FreeCADAdapter(SketchBackendAdapter):
 
         return None
 
-    def _fc_constraint_to_canonical(self, fc_constraint: Any) -> Optional[SketchConstraint]:
+    def _fc_constraint_to_canonical(self, fc_constraint: Any) -> SketchConstraint | None:
         """Convert FreeCAD constraint to canonical form."""
         fc_type = fc_constraint.Type
 
@@ -814,7 +813,7 @@ class FreeCADAdapter(SketchBackendAdapter):
 
     def _extract_constraint_references(
         self, fc_constraint: Any, constraint_type: ConstraintType
-    ) -> Optional[List[Union[str, PointRef]]]:
+    ) -> list[str | PointRef] | None:
         """Extract references from a FreeCAD constraint."""
         first = fc_constraint.First
         second = fc_constraint.Second if hasattr(fc_constraint, 'Second') else -1
@@ -824,10 +823,10 @@ class FreeCADAdapter(SketchBackendAdapter):
         second_pos = fc_constraint.SecondPos if hasattr(fc_constraint, 'SecondPos') else 0
 
         # Convert geometry indices to element IDs
-        def idx_to_id(idx: int) -> Optional[str]:
+        def idx_to_id(idx: int) -> str | None:
             return self._index_to_id.get(idx)
 
-        def idx_to_point_ref(idx: int, pos: int) -> Optional[PointRef]:
+        def idx_to_point_ref(idx: int, pos: int) -> PointRef | None:
             elem_id = idx_to_id(idx)
             if elem_id is None:
                 return None

@@ -1,14 +1,12 @@
 """JSON serialization and deserialization for the canonical sketch schema."""
 
 import json
-from typing import Any, Optional, Union
+from typing import Any
 
-from .types import Point2D, PointRef, PointType
-from .primitives import SketchPrimitive, Line, Arc, Circle, Point, Spline
-from .constraints import (
-    SketchConstraint, ConstraintType, ConstraintStatus
-)
+from .constraints import ConstraintStatus, ConstraintType, SketchConstraint
 from .document import SketchDocument, SolverStatus
+from .primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
+from .types import Point2D, PointRef, PointType
 
 
 class SketchEncoder(json.JSONEncoder):
@@ -30,7 +28,7 @@ class SketchEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def sketch_to_json(sketch: SketchDocument, indent: Optional[int] = 2) -> str:
+def sketch_to_json(sketch: SketchDocument, indent: int | None = 2) -> str:
     """
     Serialize a sketch document to JSON string.
 
@@ -315,7 +313,7 @@ def _parse_point(data: list) -> Point2D:
 
 # File I/O utilities
 
-def save_sketch(sketch: SketchDocument, filepath: str, indent: Optional[int] = 2) -> None:
+def save_sketch(sketch: SketchDocument, filepath: str, indent: int | None = 2) -> None:
     """
     Save a sketch document to a JSON file.
 
@@ -338,5 +336,5 @@ def load_sketch(filepath: str) -> SketchDocument:
     Returns:
         Loaded SketchDocument
     """
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(filepath, encoding='utf-8') as f:
         return sketch_from_json(f.read())

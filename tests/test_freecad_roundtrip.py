@@ -8,21 +8,29 @@ available on the system.
 
 import json
 import math
-import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from sketch_canonical import (
-    SketchDocument, Point2D, PointType, PointRef,
-    Line, Arc, Circle, Point, Spline,
-    Coincident, Tangent, Perpendicular, Parallel, Horizontal, Vertical,
-    Fixed, Distance, Radius, Diameter, Equal, Concentric, Length, Angle,
-    sketch_to_json, sketch_from_json,
+    Arc,
+    Circle,
+    Coincident,
+    Fixed,
+    Horizontal,
+    Line,
+    Point,
+    Point2D,
+    PointRef,
+    PointType,
+    Radius,
+    SketchDocument,
+    Spline,
+    Vertical,
+    sketch_to_json,
 )
 
 

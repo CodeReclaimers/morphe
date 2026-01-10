@@ -1,34 +1,69 @@
 """Tests for the canonical sketch schema."""
 
-import pytest
-import math
 import json
+import math
+
+import pytest
 
 from sketch_canonical import (
-    # Types
-    Point2D, Vector2D, ElementId, PointType, PointRef, ElementPrefix,
-    # Primitives
-    SketchPrimitive, Line, Arc, Circle, Point, Spline,
+    Angle,
+    Arc,
+    Circle,
+    Coincident,
+    Collinear,
+    Concentric,
+    ConstraintStatus,
     # Constraints
-    ConstraintType, ConstraintStatus, SketchConstraint, CONSTRAINT_RULES,
-    Coincident, Tangent, Perpendicular, Parallel, Concentric,
-    Equal, Collinear, Horizontal, Vertical, Fixed,
-    Distance, DistanceX, DistanceY, Length, Radius, Diameter, Angle,
-    Symmetric, MidpointConstraint,
+    ConstraintType,
+    Diameter,
+    Distance,
+    DistanceX,
+    DistanceY,
+    ElementId,
+    Equal,
+    Fixed,
+    Horizontal,
+    Length,
+    Line,
+    MidpointConstraint,
+    Parallel,
+    Perpendicular,
+    Point,
+    # Types
+    Point2D,
+    PointRef,
+    PointType,
+    Radius,
+    SketchConstraint,
     # Document
-    SketchDocument, SolverStatus,
-    # Validation
-    validate_sketch, validate_primitive, validate_constraint,
-    ValidationResult, ValidationSeverity, ValidationIssue, DEFAULT_TOLERANCE,
+    SketchDocument,
     # Serialization
     SketchEncoder,
-    sketch_to_json, sketch_from_json, sketch_to_dict, dict_to_sketch,
-    primitive_to_dict, dict_to_primitive,
-    constraint_to_dict, dict_to_constraint,
-    point_ref_to_dict, dict_to_point_ref,
-    save_sketch, load_sketch,
+    # Primitives
+    SolverStatus,
+    Spline,
+    Symmetric,
+    Tangent,
+    ValidationResult,
+    Vector2D,
+    Vertical,
+    constraint_to_dict,
+    dict_to_constraint,
+    dict_to_point_ref,
+    dict_to_primitive,
+    dict_to_sketch,
+    load_sketch,
+    point_ref_to_dict,
+    primitive_to_dict,
+    save_sketch,
+    sketch_from_json,
+    sketch_to_dict,
+    sketch_to_json,
+    validate_constraint,
+    validate_primitive,
+    # Validation
+    validate_sketch,
 )
-
 
 # =============================================================================
 # Types Tests

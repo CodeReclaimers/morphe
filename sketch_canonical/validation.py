@@ -2,12 +2,11 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
-from .types import Point2D, PointRef, PointType
-from .primitives import SketchPrimitive, Line, Arc, Circle, Point, Spline
-from .constraints import SketchConstraint, ConstraintType, CONSTRAINT_RULES
+from .constraints import CONSTRAINT_RULES, ConstraintType, SketchConstraint
 from .document import SketchDocument
+from .primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
+from .types import PointRef, PointType
 
 
 class ValidationSeverity(Enum):
@@ -21,7 +20,7 @@ class ValidationSeverity(Enum):
 class ValidationIssue:
     """A single validation issue."""
     severity: ValidationSeverity
-    element_id: Optional[str]  # ID of the affected element, if applicable
+    element_id: str | None  # ID of the affected element, if applicable
     message: str
     code: str  # Machine-readable error code
 
@@ -36,7 +35,7 @@ class ValidationResult:
     def __init__(self):
         self.issues: list[ValidationIssue] = []
 
-    def add_error(self, message: str, code: str, element_id: Optional[str] = None):
+    def add_error(self, message: str, code: str, element_id: str | None = None):
         """Add an error-level issue."""
         self.issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
@@ -45,7 +44,7 @@ class ValidationResult:
             code=code
         ))
 
-    def add_warning(self, message: str, code: str, element_id: Optional[str] = None):
+    def add_warning(self, message: str, code: str, element_id: str | None = None):
         """Add a warning-level issue."""
         self.issues.append(ValidationIssue(
             severity=ValidationSeverity.WARNING,
@@ -54,7 +53,7 @@ class ValidationResult:
             code=code
         ))
 
-    def add_info(self, message: str, code: str, element_id: Optional[str] = None):
+    def add_info(self, message: str, code: str, element_id: str | None = None):
         """Add an info-level issue."""
         self.issues.append(ValidationIssue(
             severity=ValidationSeverity.INFO,
@@ -175,7 +174,7 @@ def _validate_line(line: Line, result: ValidationResult, tolerance: float) -> No
     for coord in [line.start.x, line.start.y, line.end.x, line.end.y]:
         if not _is_finite(coord):
             result.add_error(
-                f"Line has non-finite coordinates",
+                "Line has non-finite coordinates",
                 "LINE_INVALID_COORDS",
                 line.id
             )
@@ -194,7 +193,7 @@ def _validate_arc(arc: Arc, result: ValidationResult, tolerance: float) -> None:
     for coord in coords:
         if not _is_finite(coord):
             result.add_error(
-                f"Arc has non-finite coordinates",
+                "Arc has non-finite coordinates",
                 "ARC_INVALID_COORDS",
                 arc.id
             )
@@ -214,7 +213,7 @@ def _validate_arc(arc: Arc, result: ValidationResult, tolerance: float) -> None:
     # Check for zero radius
     if r_start < tolerance:
         result.add_error(
-            f"Arc has zero radius",
+            "Arc has zero radius",
             "ARC_ZERO_RADIUS",
             arc.id
         )
@@ -235,7 +234,7 @@ def _validate_circle(circle: Circle, result: ValidationResult, tolerance: float)
     for coord in [circle.center.x, circle.center.y, circle.radius]:
         if not _is_finite(coord):
             result.add_error(
-                f"Circle has non-finite values",
+                "Circle has non-finite values",
                 "CIRCLE_INVALID_VALUES",
                 circle.id
             )
@@ -263,7 +262,7 @@ def _validate_point(point: Point, result: ValidationResult) -> None:
     for coord in [point.position.x, point.position.y]:
         if not _is_finite(coord):
             result.add_error(
-                f"Point has non-finite coordinates",
+                "Point has non-finite coordinates",
                 "POINT_INVALID_COORDS",
                 point.id
             )

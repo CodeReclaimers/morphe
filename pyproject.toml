@@ -40,7 +40,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["sketch_canonical*"]
+include = ["sketch_canonical*", "sketch_adapter_freecad*", "sketch_adapter_fusion*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

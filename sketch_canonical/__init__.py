@@ -48,95 +48,94 @@ Example usage:
 __version__ = "0.1.0"
 
 # Core types
-from .types import (
-    Point2D,
-    Vector2D,
-    ElementId,
-    ElementPrefix,
-    PointType,
-    PointRef,
-)
-
-# Geometry primitives
-from .primitives import (
-    SketchPrimitive,
-    Line,
-    Arc,
-    Circle,
-    Point,
-    Spline,
+# Adapter interface
+from .adapter import (
+    AdapterError,
+    ConstraintError,
+    ExportError,
+    GeometryError,
+    SketchBackendAdapter,
+    SketchCreationError,
 )
 
 # Constraints
 from .constraints import (
-    ConstraintType,
-    ConstraintStatus,
-    SketchConstraint,
     CONSTRAINT_RULES,
+    Angle,
     # Convenience constructors
     Coincident,
-    Tangent,
-    Perpendicular,
-    Parallel,
-    Concentric,
-    Equal,
     Collinear,
-    Horizontal,
-    Vertical,
-    Fixed,
+    Concentric,
+    ConstraintStatus,
+    ConstraintType,
+    Diameter,
     Distance,
     DistanceX,
     DistanceY,
+    Equal,
+    Fixed,
+    Horizontal,
     Length,
-    Radius,
-    Diameter,
-    Angle,
-    Symmetric,
     MidpointConstraint,
+    Parallel,
+    Perpendicular,
+    Radius,
+    SketchConstraint,
+    Symmetric,
+    Tangent,
+    Vertical,
 )
 
 # Document
 from .document import (
-    SolverStatus,
     SketchDocument,
+    SolverStatus,
 )
 
-# Validation
-from .validation import (
-    ValidationSeverity,
-    ValidationIssue,
-    ValidationResult,
-    validate_sketch,
-    validate_primitive,
-    validate_constraint,
-    DEFAULT_TOLERANCE,
+# Geometry primitives
+from .primitives import (
+    Arc,
+    Circle,
+    Line,
+    Point,
+    SketchPrimitive,
+    Spline,
 )
 
 # Serialization
 from .serialization import (
     SketchEncoder,
-    sketch_to_json,
-    sketch_from_json,
-    sketch_to_dict,
-    dict_to_sketch,
-    primitive_to_dict,
-    dict_to_primitive,
     constraint_to_dict,
     dict_to_constraint,
-    point_ref_to_dict,
     dict_to_point_ref,
-    save_sketch,
+    dict_to_primitive,
+    dict_to_sketch,
     load_sketch,
+    point_ref_to_dict,
+    primitive_to_dict,
+    save_sketch,
+    sketch_from_json,
+    sketch_to_dict,
+    sketch_to_json,
+)
+from .types import (
+    ElementId,
+    ElementPrefix,
+    Point2D,
+    PointRef,
+    PointType,
+    Vector2D,
 )
 
-# Adapter interface
-from .adapter import (
-    SketchBackendAdapter,
-    AdapterError,
-    SketchCreationError,
-    GeometryError,
-    ConstraintError,
-    ExportError,
+# Validation
+from .validation import (
+    DEFAULT_TOLERANCE,
+    ValidationIssue,
+    ValidationResult,
+    ValidationSeverity,
+    validate_constraint,
+    validate_primitive,
+    validate_sketch,
 )
 
 __all__ = [

@@ -328,7 +328,71 @@ def export_sketch(sketch_name: str) -> str:
     return _execute_on_main_thread(do_export)
 
 
-def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
+def list_planes() -> list[dict]:
+    """
+    List available planes for sketch creation.
+
+    Returns:
+        List of dicts with plane info:
+        [{"id": str, "name": str, "type": str}]
+    """
+    if not FUSION_AVAILABLE:
+        raise RuntimeError("Fusion 360 is not available")
+
+    def do_list() -> list[dict]:
+        app = adsk.core.Application.get()
+        if not app:
+            return []
+
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return []
+
+        # Standard construction planes always available
+        planes = [
+            {"id": "XY", "name": "XY Plane", "type": "construction"},
+            {"id": "XZ", "name": "XZ Plane", "type": "construction"},
+            {"id": "YZ", "name": "YZ Plane", "type": "construction"},
+        ]
+
+        root_comp = design.rootComponent
+
+        # Add construction planes from the component
+        try:
+            for i in range(root_comp.constructionPlanes.count):
+                cp = root_comp.constructionPlanes.item(i)
+                planes.append({
+                    "id": f"ConstructionPlane:{cp.name}",
+                    "name": cp.name,
+                    "type": "construction",
+                })
+        except Exception:
+            pass
+
+        # Add planar faces from bodies
+        try:
+            for body_idx in range(root_comp.bRepBodies.count):
+                body = root_comp.bRepBodies.item(body_idx)
+                for face_idx in range(body.faces.count):
+                    face = body.faces.item(face_idx)
+                    # Check if face is planar
+                    if face.geometry.objectType == adsk.core.Plane.classType():
+                        planes.append({
+                            "id": f"{body.name}:Face{face_idx + 1}",
+                            "name": f"{body.name} - Face {face_idx + 1}",
+                            "type": "face",
+                        })
+        except Exception:
+            pass
+
+        return planes
+
+    return _execute_on_main_thread(do_list)
+
+
+def import_sketch(
+    json_str: str, sketch_name: str | None = None, plane: str | None = None
+) -> str:
     """
     Import a sketch from canonical JSON format.
 
@@ -337,6 +401,7 @@ def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
     Args:
         json_str: JSON string of the canonical sketch
         sketch_name: Optional name for the new sketch (uses name from JSON if not provided)
+        plane: Optional plane ID (from list_planes). Defaults to "XY".
 
     Returns:
         Name of the created sketch object
@@ -352,7 +417,40 @@ def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
             sketch_doc.name = sketch_name
 
         adapter = _get_adapter()
-        adapter.create_sketch(sketch_doc.name)
+
+        # Resolve plane
+        plane_to_use = plane or "XY"
+        if plane and ":" in plane:
+            # Try to resolve plane reference
+            try:
+                app = adsk.core.Application.get()
+                design = adsk.fusion.Design.cast(app.activeProduct)
+                root_comp = design.rootComponent
+
+                if plane.startswith("ConstructionPlane:"):
+                    # Find construction plane by name
+                    cp_name = plane.split(":", 1)[1]
+                    for i in range(root_comp.constructionPlanes.count):
+                        cp = root_comp.constructionPlanes.item(i)
+                        if cp.name == cp_name:
+                            plane_to_use = cp
+                            break
+                else:
+                    # Face reference like "Body1:Face3"
+                    parts = plane.split(":")
+                    if len(parts) == 2:
+                        body_name, face_ref = parts
+                        face_idx = int(face_ref.replace("Face", "")) - 1
+                        for body_idx in range(root_comp.bRepBodies.count):
+                            body = root_comp.bRepBodies.item(body_idx)
+                            if body.name == body_name:
+                                if 0 <= face_idx < body.faces.count:
+                                    plane_to_use = body.faces.item(face_idx)
+                                break
+            except Exception:
+                plane_to_use = "XY"
+
+        adapter.create_sketch(sketch_doc.name, plane=plane_to_use)
         adapter.load_sketch(sketch_doc)
 
         return adapter._sketch.name
@@ -543,6 +641,7 @@ def start_server(
 
     # Register functions
     _server.register_function(list_sketches, "list_sketches")
+    _server.register_function(list_planes, "list_planes")
     _server.register_function(export_sketch, "export_sketch")
     _server.register_function(import_sketch, "import_sketch")
     _server.register_function(get_solver_status, "get_solver_status")

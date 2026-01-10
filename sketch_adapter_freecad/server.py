@@ -226,23 +226,26 @@ def list_sketches() -> list[dict]:
     if not FREECAD_AVAILABLE:
         raise RuntimeError("FreeCAD is not available")
 
-    doc = FreeCAD.ActiveDocument
-    if doc is None:
-        return []
+    def do_list() -> list[dict]:
+        doc = FreeCAD.ActiveDocument
+        if doc is None:
+            return []
 
-    sketches = []
-    for obj in doc.Objects:
-        if obj.TypeId == "Sketcher::SketchObject":
-            sketches.append(
-                {
-                    "name": obj.Name,
-                    "label": obj.Label,
-                    "constraint_count": obj.ConstraintCount,
-                    "geometry_count": obj.GeometryCount,
-                }
-            )
+        sketches = []
+        for obj in doc.Objects:
+            if obj.TypeId == "Sketcher::SketchObject":
+                sketches.append(
+                    {
+                        "name": obj.Name,
+                        "label": obj.Label,
+                        "constraint_count": obj.ConstraintCount,
+                        "geometry_count": obj.GeometryCount,
+                    }
+                )
 
-    return sketches
+        return sketches
+
+    return _executor.execute(do_list)
 
 
 def export_sketch(sketch_name: str) -> str:
@@ -258,27 +261,72 @@ def export_sketch(sketch_name: str) -> str:
     if not FREECAD_AVAILABLE:
         raise RuntimeError("FreeCAD is not available")
 
-    doc = FreeCAD.ActiveDocument
-    if doc is None:
-        raise RuntimeError("No active document")
+    def do_export() -> str:
+        doc = FreeCAD.ActiveDocument
+        if doc is None:
+            raise RuntimeError("No active document")
 
-    sketch_obj = doc.getObject(sketch_name)
-    if sketch_obj is None:
-        raise ValueError(f"Sketch '{sketch_name}' not found")
+        sketch_obj = doc.getObject(sketch_name)
+        if sketch_obj is None:
+            raise ValueError(f"Sketch '{sketch_name}' not found")
 
-    if sketch_obj.TypeId != "Sketcher::SketchObject":
-        raise ValueError(f"Object '{sketch_name}' is not a sketch")
+        if sketch_obj.TypeId != "Sketcher::SketchObject":
+            raise ValueError(f"Object '{sketch_name}' is not a sketch")
 
-    adapter = _get_adapter()
-    adapter._document = doc
-    adapter._sketch = sketch_obj
+        adapter = _get_adapter()
+        adapter._document = doc
+        adapter._sketch = sketch_obj
 
-    exported = adapter.export_sketch()
-    sketch_to_json = _get_sketch_to_json()
-    return sketch_to_json(exported)
+        exported = adapter.export_sketch()
+        sketch_to_json = _get_sketch_to_json()
+        return sketch_to_json(exported)
+
+    return _executor.execute(do_export)
 
 
-def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
+def list_planes() -> list[dict]:
+    """
+    List available planes for sketch creation.
+
+    Returns:
+        List of dicts with plane info:
+        [{"id": str, "name": str, "type": str}]
+    """
+    if not FREECAD_AVAILABLE:
+        raise RuntimeError("FreeCAD is not available")
+
+    def do_list_planes() -> list[dict]:
+        # Standard construction planes always available
+        planes = [
+            {"id": "XY", "name": "XY Plane", "type": "construction"},
+            {"id": "XZ", "name": "XZ Plane", "type": "construction"},
+            {"id": "YZ", "name": "YZ Plane", "type": "construction"},
+        ]
+
+        # Check for planar faces in the document
+        doc = FreeCAD.ActiveDocument
+        if doc:
+            for obj in doc.Objects:
+                if hasattr(obj, "Shape") and obj.Shape:
+                    try:
+                        for i, face in enumerate(obj.Shape.Faces):
+                            if face.Surface.TypeId == "Part::GeomPlane":
+                                planes.append({
+                                    "id": f"{obj.Name}:Face{i + 1}",
+                                    "name": f"{obj.Label} - Face {i + 1}",
+                                    "type": "face",
+                                })
+                    except Exception:
+                        pass
+
+        return planes
+
+    return _executor.execute(do_list_planes)
+
+
+def import_sketch(
+    json_str: str, sketch_name: str | None = None, plane: str | None = None
+) -> str:
     """
     Import a sketch from canonical JSON format.
 
@@ -288,6 +336,7 @@ def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
     Args:
         json_str: JSON string of the canonical sketch
         sketch_name: Optional name for the new sketch (uses name from JSON if not provided)
+        plane: Optional plane ID (from list_planes). Defaults to "XY".
 
     Returns:
         Name of the created sketch object
@@ -303,7 +352,24 @@ def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
 
     def do_import() -> str:
         adapter = _get_adapter()
-        adapter.create_sketch(sketch_doc.name)
+
+        # Resolve plane
+        plane_obj = None
+        if plane and plane not in ("XY", "XZ", "YZ"):
+            # Try to resolve face reference like "Body:Face1"
+            try:
+                parts = plane.split(":")
+                if len(parts) == 2:
+                    obj_name, face_name = parts
+                    doc = FreeCAD.ActiveDocument
+                    obj = doc.getObject(obj_name)
+                    if obj and hasattr(obj, "Shape"):
+                        face_idx = int(face_name.replace("Face", "")) - 1
+                        plane_obj = obj.Shape.Faces[face_idx]
+            except Exception:
+                pass
+
+        adapter.create_sketch(sketch_doc.name, plane=plane_obj or plane or "XY")
         adapter.load_sketch(sketch_doc)
         return adapter._sketch.Name
 
@@ -324,20 +390,23 @@ def get_solver_status(sketch_name: str) -> dict:
     if not FREECAD_AVAILABLE:
         raise RuntimeError("FreeCAD is not available")
 
-    doc = FreeCAD.ActiveDocument
-    if doc is None:
-        raise RuntimeError("No active document")
+    def do_get_solver_status() -> dict:
+        doc = FreeCAD.ActiveDocument
+        if doc is None:
+            raise RuntimeError("No active document")
 
-    sketch_obj = doc.getObject(sketch_name)
-    if sketch_obj is None:
-        raise ValueError(f"Sketch '{sketch_name}' not found")
+        sketch_obj = doc.getObject(sketch_name)
+        if sketch_obj is None:
+            raise ValueError(f"Sketch '{sketch_name}' not found")
 
-    adapter = _get_adapter()
-    adapter._document = doc
-    adapter._sketch = sketch_obj
+        adapter = _get_adapter()
+        adapter._document = doc
+        adapter._sketch = sketch_obj
 
-    status, dof = adapter.get_solver_status()
-    return {"status": status.name, "dof": dof}
+        status, dof = adapter.get_solver_status()
+        return {"status": status.name, "dof": dof}
+
+    return _executor.execute(do_get_solver_status)
 
 
 def get_status() -> dict:
@@ -353,17 +422,26 @@ def get_status() -> dict:
     }
 
     if FREECAD_AVAILABLE:
-        version = FreeCAD.Version()
-        result["freecad_version"] = f"{version[0]}.{version[1]}"
-        doc = FreeCAD.ActiveDocument
-        if doc:
-            result["active_document"] = doc.Name
-            result["sketch_count"] = len(
-                [o for o in doc.Objects if o.TypeId == "Sketcher::SketchObject"]
-            )
-        else:
-            result["active_document"] = None
-            result["sketch_count"] = 0
+
+        def do_get_status() -> dict:
+            status = {}
+            version = FreeCAD.Version()
+            status["freecad_version"] = f"{version[0]}.{version[1]}"
+            doc = FreeCAD.ActiveDocument
+            if doc:
+                status["active_document"] = doc.Name
+                status["sketch_count"] = len(
+                    [o for o in doc.Objects if o.TypeId == "Sketcher::SketchObject"]
+                )
+            else:
+                status["active_document"] = None
+                status["sketch_count"] = 0
+            return status
+
+        try:
+            result.update(_executor.execute(do_get_status))
+        except Exception as e:
+            result["error"] = str(e)
 
     return result
 
@@ -453,6 +531,7 @@ def start_server(
 
     # Register functions
     _server.register_function(list_sketches, "list_sketches")
+    _server.register_function(list_planes, "list_planes")
     _server.register_function(export_sketch, "export_sketch")
     _server.register_function(import_sketch, "import_sketch")
     _server.register_function(get_solver_status, "get_solver_status")

@@ -201,7 +201,61 @@ def export_sketch(sketch_name: str) -> str:
         _uninit_com()
 
 
-def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
+def list_planes() -> list[dict]:
+    """
+    List available planes for sketch creation.
+
+    Returns:
+        List of dicts with plane info:
+        [{"id": str, "name": str, "type": str}]
+    """
+    if not SOLIDWORKS_AVAILABLE:
+        raise RuntimeError("SolidWorks is not available")
+
+    _init_com()
+    try:
+        # Standard reference planes always available
+        planes = [
+            {"id": "XY", "name": "Front Plane", "type": "construction"},
+            {"id": "XZ", "name": "Top Plane", "type": "construction"},
+            {"id": "YZ", "name": "Right Plane", "type": "construction"},
+        ]
+
+        adapter = _get_adapter()
+        if adapter._document is None:
+            adapter._ensure_document()
+
+        doc = adapter._document
+        if doc:
+            try:
+                # Get reference planes from feature tree
+                feat = doc.FirstFeature()
+                while feat is not None:
+                    try:
+                        feat_type = feat.GetTypeName2()
+                        if feat_type == "RefPlane":
+                            # Skip the standard planes we already added
+                            name = feat.Name
+                            if name not in ("Front Plane", "Top Plane", "Right Plane"):
+                                planes.append({
+                                    "id": f"RefPlane:{name}",
+                                    "name": name,
+                                    "type": "reference",
+                                })
+                    except Exception:
+                        pass
+                    feat = feat.GetNextFeature()
+            except Exception:
+                pass
+
+        return planes
+    finally:
+        _uninit_com()
+
+
+def import_sketch(
+    json_str: str, sketch_name: str | None = None, plane: str | None = None
+) -> str:
     """
     Import a sketch from canonical JSON format.
 
@@ -211,6 +265,7 @@ def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
     Args:
         json_str: JSON string of the canonical sketch
         sketch_name: Optional name for the new sketch (uses name from JSON if not provided)
+        plane: Optional plane ID (from list_planes). Defaults to "XY" (Front Plane).
 
     Returns:
         Name of the created sketch feature
@@ -227,7 +282,28 @@ def import_sketch(json_str: str, sketch_name: str | None = None) -> str:
             sketch_doc.name = sketch_name
 
         adapter = _get_adapter()
-        adapter.create_sketch(sketch_doc.name)
+
+        # Resolve plane
+        plane_to_use = plane or "XY"
+        if plane and plane.startswith("RefPlane:"):
+            # Resolve reference plane
+            try:
+                plane_name = plane.split(":", 1)[1]
+                doc = adapter._document
+                if doc is None:
+                    adapter._ensure_document()
+                    doc = adapter._document
+                if doc:
+                    feat = doc.FirstFeature()
+                    while feat is not None:
+                        if feat.GetTypeName2() == "RefPlane" and feat.Name == plane_name:
+                            plane_to_use = feat
+                            break
+                        feat = feat.GetNextFeature()
+            except Exception:
+                plane_to_use = "XY"
+
+        adapter.create_sketch(sketch_doc.name, plane=plane_to_use)
         adapter.load_sketch(sketch_doc)
 
         # Return the sketch name
@@ -402,6 +478,7 @@ def start_server(
 
     # Register functions
     _server.register_function(list_sketches, "list_sketches")
+    _server.register_function(list_planes, "list_planes")
     _server.register_function(export_sketch, "export_sketch")
     _server.register_function(import_sketch, "import_sketch")
     _server.register_function(get_solver_status, "get_solver_status")

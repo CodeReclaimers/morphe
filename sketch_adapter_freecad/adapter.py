@@ -122,17 +122,42 @@ class FreeCADAdapter(SketchBackendAdapter):
 
         Args:
             name: Sketch name
-            plane: FreeCAD plane object. If None, uses XY plane.
+            plane: Plane specification. Can be:
+                   - None or "XY": XY plane (default)
+                   - "XZ": XZ plane
+                   - "YZ": YZ plane
+                   - FreeCAD face/plane object for custom planes
         """
         doc = self._get_document()
 
         # Create sketch object
         self._sketch = doc.addObject('Sketcher::SketchObject', name)
 
-        # Set the sketch plane
-        if plane is not None:
-            self._sketch.Support = plane
-        # Default is XY plane (no support needed)
+        # Set the sketch plane based on specification
+        if plane is None or plane == "XY":
+            # XY plane is the default - no changes needed
+            pass
+        elif plane == "XZ":
+            # XZ plane: rotate 90 degrees around X axis
+            self._sketch.Placement = App.Placement(
+                App.Vector(0, 0, 0),
+                App.Rotation(App.Vector(1, 0, 0), 90)
+            )
+        elif plane == "YZ":
+            # YZ plane: rotate 90 degrees around Y axis
+            self._sketch.Placement = App.Placement(
+                App.Vector(0, 0, 0),
+                App.Rotation(App.Vector(0, 1, 0), -90)
+            )
+        elif hasattr(plane, 'Surface'):
+            # It's a FreeCAD face - use as support
+            self._sketch.Support = [(plane, '')]
+        elif plane is not None:
+            # Try to use as support directly
+            try:
+                self._sketch.Support = plane
+            except Exception:
+                pass  # Fall back to default XY
 
         # Clear mappings
         self._id_to_index.clear()

@@ -123,6 +123,16 @@ class InventorClient:
         self._ensure_connected()
         return self._proxy.list_sketches()  # type: ignore[union-attr, return-value]
 
+    def list_planes(self) -> list[dict]:
+        """
+        List available planes for sketch creation.
+
+        Returns:
+            List of dicts with keys: id, name, type
+        """
+        self._ensure_connected()
+        return self._proxy.list_planes()  # type: ignore[union-attr, return-value]
+
     def export_sketch(self, sketch_name: str) -> SketchDocument:
         """
         Export a sketch from Inventor.
@@ -151,7 +161,7 @@ class InventorClient:
         return self._proxy.export_sketch(sketch_name)  # type: ignore[union-attr]
 
     def import_sketch(
-        self, sketch: SketchDocument, name: str | None = None
+        self, sketch: SketchDocument, name: str | None = None, plane: str | None = None
     ) -> str:
         """
         Import a sketch into Inventor.
@@ -159,27 +169,31 @@ class InventorClient:
         Args:
             sketch: SketchDocument to import
             name: Optional name override (uses sketch.name if not provided)
+            plane: Optional plane ID (from list_planes). Defaults to "XY".
 
         Returns:
             Name of the created sketch object in Inventor
         """
         self._ensure_connected()
         json_str = sketch_to_json(sketch)
-        return self._proxy.import_sketch(json_str, name)  # type: ignore[union-attr]
+        return self._proxy.import_sketch(json_str, name, plane)  # type: ignore[union-attr]
 
-    def import_sketch_json(self, json_str: str, name: str | None = None) -> str:
+    def import_sketch_json(
+        self, json_str: str, name: str | None = None, plane: str | None = None
+    ) -> str:
         """
         Import a sketch into Inventor from JSON string.
 
         Args:
             json_str: JSON string of the canonical sketch
             name: Optional name override
+            plane: Optional plane ID (from list_planes). Defaults to "XY".
 
         Returns:
             Name of the created sketch object in Inventor
         """
         self._ensure_connected()
-        return self._proxy.import_sketch(json_str, name)  # type: ignore[union-attr]
+        return self._proxy.import_sketch(json_str, name, plane)  # type: ignore[union-attr]
 
     def get_solver_status(self, sketch_name: str) -> tuple[str, int]:
         """

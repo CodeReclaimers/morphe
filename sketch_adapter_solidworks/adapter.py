@@ -210,7 +210,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 if active_doc is not None:
                     self._document = active_doc
                     return
-            except Exception as e:
+            except Exception:
                 pass
 
             # Try to find part template using various methods
@@ -269,7 +269,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
             template_folders.extend([
                 f"{program_data}\\SolidWorks\\SOLIDWORKS {year}\\templates",
                 f"{program_data}\\SolidWorks\\SOLIDWORKS {year}\\lang\\english\\Tutorial",
-                f"C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\lang\\english\\Tutorial",
+                "C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\lang\\english\\Tutorial",
             ])
 
         for folder in template_folders:
@@ -317,7 +317,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 try:
                     # Get FeatureManager to access features
                     plane_feature = model.FeatureByName(plane_name)
-                except Exception as e:
+                except Exception:
                     pass
 
                 if plane_feature is not None:
@@ -1813,7 +1813,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
             # They may come as arcs or need special handling
             else:
                 return None
-        except Exception as e:
+        except Exception:
             return None
 
     def _export_line(self, segment: Any, construction: bool = False) -> Line:
@@ -1826,7 +1826,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
             sketch_line = win32com.client.CastTo(segment, "ISketchLine")
             start_pt = sketch_line.GetStartPoint2()
             end_pt = sketch_line.GetEndPoint2()
-        except Exception as e:
+        except Exception:
             pass
 
         # Method 2: Try ISketchSegment interface
@@ -1835,7 +1835,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 sketch_seg = win32com.client.CastTo(segment, "ISketchSegment")
                 start_pt = sketch_seg.GetStartPoint2()
                 end_pt = sketch_seg.GetEndPoint2()
-            except Exception as e:
+            except Exception:
                 pass
 
         # Method 3: Match by segment length to find endpoint pair

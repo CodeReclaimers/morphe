@@ -787,6 +787,8 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 return self._add_midpoint(model, refs)
             elif ctype == ConstraintType.FIXED:
                 return self._add_fixed(model, refs)
+            elif ctype == ConstraintType.SYMMETRIC:
+                return self._add_symmetric(model, refs)
 
             # Dimensional constraints - disable input dialog first
             elif ctype == ConstraintType.DISTANCE:
@@ -1184,6 +1186,40 @@ class SolidWorksAdapter(SketchBackendAdapter):
             raise ConstraintError("Could not select entity")
 
         model.SketchAddConstraints("sgFIXED")
+        return True
+
+    def _add_symmetric(self, model: Any, refs: list) -> bool:
+        """Add a symmetric constraint.
+
+        The symmetric constraint makes two elements symmetric about a line.
+        References: [element1, element2, symmetry_axis]
+
+        For point symmetry: both element1 and element2 are PointRefs
+        For line/entity symmetry: element1 and element2 are entity IDs
+        The symmetry_axis is always a line entity ID.
+        """
+        if len(refs) < 3:
+            raise ConstraintError("Symmetric requires 3 references: element1, element2, axis")
+
+        ref1 = refs[0]
+        ref2 = refs[1]
+        axis_ref = refs[2]
+
+        model.ClearSelection2(True)
+
+        # Select first element (point or entity)
+        if not self._select_entity(ref1, False):
+            raise ConstraintError("Could not select first element")
+
+        # Select second element (point or entity)
+        if not self._select_entity(ref2, True):
+            raise ConstraintError("Could not select second element")
+
+        # Select the symmetry axis (always a line)
+        if not self._select_entity(axis_ref, True):
+            raise ConstraintError("Could not select symmetry axis")
+
+        model.SketchAddConstraints("sgSYMMETRIC")
         return True
 
     def _add_distance(self, model: Any, refs: list, value: float | None) -> bool:
@@ -2062,6 +2098,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 SwConstraintType.COLLINEAR: ConstraintType.COLLINEAR,
                 SwConstraintType.FIX: ConstraintType.FIXED,
                 SwConstraintType.MIDPOINT: ConstraintType.MIDPOINT,
+                SwConstraintType.SYMMETRIC: ConstraintType.SYMMETRIC,
             }
 
             if rel_type not in type_map:

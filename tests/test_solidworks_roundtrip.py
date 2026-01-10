@@ -37,6 +37,7 @@ from sketch_canonical import (
     SketchDocument,
     SolverStatus,
     Spline,
+    Symmetric,
     Tangent,
     Vertical,
 )
@@ -1739,3 +1740,304 @@ class TestSolidWorksRoundTripAdvanced:
         line = list(exported.primitives.values())[0]
         assert abs(line.end.x - 0.1) < 0.01, f"X should be 0.1, got {line.end.x}"
         assert abs(line.end.y - 0.05) < 0.01, f"Y should be 0.05, got {line.end.y}"
+
+
+class TestSolidWorksRoundTripSymmetric:
+    """Tests for symmetric constraint in SolidWorks adapter."""
+
+    @pytest.fixture
+    def adapter(self):
+        """Create a fresh SolidWorks adapter for each test."""
+        if not SOLIDWORKS_AVAILABLE:
+            pytest.skip("SolidWorks not available")
+        adapter = SolidWorksAdapter()
+        yield adapter
+
+    def test_symmetric_points_about_vertical_line(self, adapter):
+        """Test point symmetry about a vertical centerline."""
+        sketch = SketchDocument(name="SymmetricPointsVerticalTest")
+
+        # Create a vertical centerline
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(50, 0),
+            end=Point2D(50, 100),
+            construction=True
+        ))
+
+        # Create two points that should be symmetric about the centerline
+        p1 = sketch.add_primitive(Point(position=Point2D(30, 50)))
+        p2 = sketch.add_primitive(Point(position=Point2D(70, 50)))
+
+        # Add symmetric constraint
+        sketch.add_constraint(Symmetric(
+            PointRef(p1, PointType.CENTER),
+            PointRef(p2, PointType.CENTER),
+            centerline
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Should have 2 points and 1 line (centerline)
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+
+        assert len(points) >= 2, "Should have at least 2 points"
+        assert len(lines) >= 1, "Should have at least 1 line (centerline)"
+
+    def test_symmetric_points_about_horizontal_line(self, adapter):
+        """Test point symmetry about a horizontal centerline."""
+        sketch = SketchDocument(name="SymmetricPointsHorizontalTest")
+
+        # Create a horizontal centerline
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(0, 50),
+            end=Point2D(100, 50),
+            construction=True
+        ))
+
+        # Create two points that should be symmetric about the centerline
+        p1 = sketch.add_primitive(Point(position=Point2D(50, 30)))
+        p2 = sketch.add_primitive(Point(position=Point2D(50, 70)))
+
+        # Add symmetric constraint
+        sketch.add_constraint(Symmetric(
+            PointRef(p1, PointType.CENTER),
+            PointRef(p2, PointType.CENTER),
+            centerline
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+        assert len(points) >= 2, "Should have at least 2 points"
+
+    def test_symmetric_lines_about_centerline(self, adapter):
+        """Test line symmetry about a vertical centerline."""
+        sketch = SketchDocument(name="SymmetricLinesTest")
+
+        # Create a vertical centerline
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(50, 0),
+            end=Point2D(50, 100),
+            construction=True
+        ))
+
+        # Create two lines that should be symmetric about the centerline
+        line1 = sketch.add_primitive(Line(
+            start=Point2D(20, 20),
+            end=Point2D(40, 60)
+        ))
+        line2 = sketch.add_primitive(Line(
+            start=Point2D(80, 20),
+            end=Point2D(60, 60)
+        ))
+
+        # Add symmetric constraint
+        sketch.add_constraint(Symmetric(line1, line2, centerline))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) >= 3, "Should have at least 3 lines (2 symmetric + centerline)"
+
+    def test_symmetric_line_endpoints(self, adapter):
+        """Test symmetry of line endpoints about a centerline."""
+        sketch = SketchDocument(name="SymmetricEndpointsTest")
+
+        # Create a vertical centerline
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(50, 0),
+            end=Point2D(50, 100),
+            construction=True
+        ))
+
+        # Create two lines
+        line1 = sketch.add_primitive(Line(
+            start=Point2D(30, 40),
+            end=Point2D(30, 80)
+        ))
+        line2 = sketch.add_primitive(Line(
+            start=Point2D(70, 40),
+            end=Point2D(70, 80)
+        ))
+
+        # Make start points symmetric
+        sketch.add_constraint(Symmetric(
+            PointRef(line1, PointType.START),
+            PointRef(line2, PointType.START),
+            centerline
+        ))
+
+        # Make end points symmetric
+        sketch.add_constraint(Symmetric(
+            PointRef(line1, PointType.END),
+            PointRef(line2, PointType.END),
+            centerline
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        non_construction = [l for l in lines if not l.construction]
+        assert len(non_construction) >= 2, "Should have at least 2 non-construction lines"
+
+    def test_symmetric_circles(self, adapter):
+        """Test circle symmetry about a centerline."""
+        sketch = SketchDocument(name="SymmetricCirclesTest")
+
+        # Create a vertical centerline
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(50, 0),
+            end=Point2D(50, 100),
+            construction=True
+        ))
+
+        # Create two circles that should be symmetric about the centerline
+        circle1 = sketch.add_primitive(Circle(
+            center=Point2D(30, 50),
+            radius=10
+        ))
+        circle2 = sketch.add_primitive(Circle(
+            center=Point2D(70, 50),
+            radius=10
+        ))
+
+        # Add symmetric constraint for the circle centers
+        sketch.add_constraint(Symmetric(
+            PointRef(circle1, PointType.CENTER),
+            PointRef(circle2, PointType.CENTER),
+            centerline
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        circles = [p for p in exported.primitives.values() if isinstance(p, Circle)]
+        assert len(circles) >= 2, "Should have at least 2 circles"
+
+    def test_symmetric_arcs(self, adapter):
+        """Test arc symmetry about a centerline."""
+        sketch = SketchDocument(name="SymmetricArcsTest")
+
+        # Create a vertical centerline
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(50, 0),
+            end=Point2D(50, 100),
+            construction=True
+        ))
+
+        # Create two arcs that should be symmetric
+        arc1 = sketch.add_primitive(Arc(
+            center=Point2D(30, 50),
+            start_point=Point2D(40, 50),
+            end_point=Point2D(30, 60),
+            ccw=True
+        ))
+        arc2 = sketch.add_primitive(Arc(
+            center=Point2D(70, 50),
+            start_point=Point2D(60, 50),
+            end_point=Point2D(70, 60),
+            ccw=False  # Mirror flips direction
+        ))
+
+        # Add symmetric constraint for the arc centers
+        sketch.add_constraint(Symmetric(
+            PointRef(arc1, PointType.CENTER),
+            PointRef(arc2, PointType.CENTER),
+            centerline
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+        assert len(arcs) >= 2, "Should have at least 2 arcs"
+
+    def test_symmetric_with_diagonal_axis(self, adapter):
+        """Test symmetry about a diagonal axis line."""
+        sketch = SketchDocument(name="SymmetricDiagonalTest")
+
+        # Create a diagonal centerline (45 degrees)
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(100, 100),
+            construction=True
+        ))
+
+        # Create two points symmetric about the diagonal
+        p1 = sketch.add_primitive(Point(position=Point2D(20, 60)))
+        p2 = sketch.add_primitive(Point(position=Point2D(60, 20)))
+
+        # Add symmetric constraint
+        sketch.add_constraint(Symmetric(
+            PointRef(p1, PointType.CENTER),
+            PointRef(p2, PointType.CENTER),
+            centerline
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+        assert len(points) >= 2, "Should have at least 2 points"
+
+    def test_symmetric_rectangle_halves(self, adapter):
+        """Test creating a symmetric rectangle using half and mirror."""
+        sketch = SketchDocument(name="SymmetricRectangleTest")
+
+        # Create a vertical centerline
+        centerline = sketch.add_primitive(Line(
+            start=Point2D(50, 0),
+            end=Point2D(50, 100),
+            construction=True
+        ))
+
+        # Create left half of rectangle
+        left_top = sketch.add_primitive(Line(
+            start=Point2D(0, 80),
+            end=Point2D(50, 80)
+        ))
+        left_side = sketch.add_primitive(Line(
+            start=Point2D(0, 20),
+            end=Point2D(0, 80)
+        ))
+        left_bottom = sketch.add_primitive(Line(
+            start=Point2D(0, 20),
+            end=Point2D(50, 20)
+        ))
+
+        # Create right half of rectangle
+        right_top = sketch.add_primitive(Line(
+            start=Point2D(50, 80),
+            end=Point2D(100, 80)
+        ))
+        right_side = sketch.add_primitive(Line(
+            start=Point2D(100, 20),
+            end=Point2D(100, 80)
+        ))
+        right_bottom = sketch.add_primitive(Line(
+            start=Point2D(50, 20),
+            end=Point2D(100, 20)
+        ))
+
+        # Make the sides symmetric
+        sketch.add_constraint(Symmetric(left_side, right_side, centerline))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        non_construction = [l for l in lines if not l.construction]
+        assert len(non_construction) >= 6, "Should have at least 6 non-construction lines"

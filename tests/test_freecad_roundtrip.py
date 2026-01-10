@@ -16,12 +16,18 @@ from pathlib import Path
 import pytest
 
 from sketch_canonical import (
+    Angle,
     Arc,
     Circle,
     Coincident,
+    Concentric,
+    Diameter,
+    Equal,
     Fixed,
     Horizontal,
     Line,
+    Parallel,
+    Perpendicular,
     Point,
     Point2D,
     PointRef,

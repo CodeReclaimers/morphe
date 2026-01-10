@@ -881,13 +881,12 @@ class SolidWorksAdapter(SketchBackendAdapter):
         entity_index = self._entity_to_id.get(id(entity))
         if entity_index is None:
             # Try to find by searching through entities
-            for idx, geom in enumerate(self._segment_geometry_list):
-                # Check if this geometry matches the entity
-                pass
+            # (placeholder for future implementation)
+            pass
 
         # Look up the geometry by element_id
         geom = None
-        for idx, g in enumerate(self._segment_geometry_list):
+        for g in self._segment_geometry_list:
             # Match by checking if the entity at this index is our entity
             # Since we can't compare COM objects reliably, use the stored coordinates
             if g.get('element_id') == element_id:
@@ -897,17 +896,13 @@ class SolidWorksAdapter(SketchBackendAdapter):
         # If we don't have stored geometry with element_id, try matching by index
         if geom is None:
             # Find the entity index in the order we stored it
-            for prim_id, ent in self._id_to_entity.items():
+            for prim_id, _ent in self._id_to_entity.items():
                 if prim_id == element_id:
                     # Find the index of this primitive
                     # We need to track which geometry belongs to which primitive
                     break
 
-            # Fallback: just use the primitive ID to find geometry
-            # The primitive ID should match the order of creation
-            for idx, g in enumerate(self._segment_geometry_list):
-                pass  # Can't reliably match without element_id
-
+            # Can't reliably match without element_id
             return None
 
         # Get the target coordinates based on point type
@@ -1289,11 +1284,9 @@ class SolidWorksAdapter(SketchBackendAdapter):
 
         # Find the stored geometry
         geom = None
-        geom_idx = None
-        for idx, g in enumerate(self._segment_geometry_list):
+        for g in self._segment_geometry_list:
             if g.get('element_id') == entity_id:
                 geom = g
-                geom_idx = idx
                 break
 
         if geom is None:
@@ -1984,10 +1977,6 @@ class SolidWorksAdapter(SketchBackendAdapter):
             )
 
         # Otherwise try to export as an arc (original logic for arcs)
-        start_pt = None
-        end_pt = None
-        center_pt = None
-
         if self._sketch is not None and radius is not None:
             try:
                 points = self._get_com_result(self._sketch, "GetSketchPoints2")
@@ -2188,7 +2177,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 # Count constraints
                 constraint_dof = 0
                 if relations:
-                    for rel in relations:
+                    for _rel in relations:
                         constraint_dof += 1  # Simplified - each relation removes 1 DOF
 
                 # Estimate status

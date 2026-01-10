@@ -1435,11 +1435,11 @@ class TestSolidWorksRoundTripProfiles:
         sketch = SketchDocument(name="SlotProfileTest")
 
         # Create a slot: two parallel lines connected by two semicircular arcs
-        l1 = sketch.add_primitive(Line(start=Point2D(20, 0), end=Point2D(80, 0)))
-        l2 = sketch.add_primitive(Line(start=Point2D(80, 40), end=Point2D(20, 40)))
+        sketch.add_primitive(Line(start=Point2D(20, 0), end=Point2D(80, 0)))
+        sketch.add_primitive(Line(start=Point2D(80, 40), end=Point2D(20, 40)))
 
         # Right semicircle
-        arc1 = sketch.add_primitive(Arc(
+        sketch.add_primitive(Arc(
             center=Point2D(80, 20),
             start_point=Point2D(80, 0),
             end_point=Point2D(80, 40),
@@ -1447,7 +1447,7 @@ class TestSolidWorksRoundTripProfiles:
         ))
 
         # Left semicircle
-        arc2 = sketch.add_primitive(Arc(
+        sketch.add_primitive(Arc(
             center=Point2D(20, 20),
             start_point=Point2D(20, 40),
             end_point=Point2D(20, 0),
@@ -1470,14 +1470,14 @@ class TestSolidWorksRoundTripProfiles:
         sketch = SketchDocument(name="SmoothCornerTest")
 
         # Create an L-shape with a fillet
-        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(0, 50)))
-        arc = sketch.add_primitive(Arc(
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(0, 50)))
+        sketch.add_primitive(Arc(
             center=Point2D(10, 50),
             start_point=Point2D(0, 50),
             end_point=Point2D(10, 60),
             ccw=True
         ))
-        l2 = sketch.add_primitive(Line(start=Point2D(10, 60), end=Point2D(60, 60)))
+        sketch.add_primitive(Line(start=Point2D(10, 60), end=Point2D(60, 60)))
 
         adapter.create_sketch(sketch.name)
         adapter.load_sketch(sketch)
@@ -1621,8 +1621,8 @@ class TestSolidWorksRoundTripAdvanced:
         assert len(lines) == 4
 
         # Check horizontal lines are horizontal
-        horizontal_count = sum(1 for l in lines if abs(l.start.y - l.end.y) < 0.5)
-        vertical_count = sum(1 for l in lines if abs(l.start.x - l.end.x) < 0.5)
+        horizontal_count = sum(1 for ln in lines if abs(ln.start.y - ln.end.y) < 0.5)
+        vertical_count = sum(1 for ln in lines if abs(ln.start.x - ln.end.x) < 0.5)
 
         assert horizontal_count == 2, f"Should have 2 horizontal lines, got {horizontal_count}"
         assert vertical_count == 2, f"Should have 2 vertical lines, got {vertical_count}"
@@ -1691,11 +1691,11 @@ class TestSolidWorksRoundTripAdvanced:
         """Test arc tangent to two lines (fillet-like)."""
         sketch = SketchDocument(name="ArcTangent2LinesTest")
 
-        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
-        l2 = sketch.add_primitive(Line(start=Point2D(50, 50), end=Point2D(50, 0)))
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+        sketch.add_primitive(Line(start=Point2D(50, 50), end=Point2D(50, 0)))
 
         # Arc connecting the two lines
-        arc = sketch.add_primitive(Arc(
+        sketch.add_primitive(Arc(
             center=Point2D(50, 0),
             start_point=Point2D(50, 0),
             end_point=Point2D(50, 0),
@@ -1886,7 +1886,7 @@ class TestSolidWorksRoundTripSymmetric:
         exported = adapter.export_sketch()
 
         lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
-        non_construction = [l for l in lines if not l.construction]
+        non_construction = [ln for ln in lines if not ln.construction]
         assert len(non_construction) >= 2, "Should have at least 2 non-construction lines"
 
     def test_symmetric_circles(self, adapter):
@@ -2004,7 +2004,7 @@ class TestSolidWorksRoundTripSymmetric:
         ))
 
         # Create left half of rectangle
-        left_top = sketch.add_primitive(Line(
+        sketch.add_primitive(Line(
             start=Point2D(0, 80),
             end=Point2D(50, 80)
         ))
@@ -2012,13 +2012,13 @@ class TestSolidWorksRoundTripSymmetric:
             start=Point2D(0, 20),
             end=Point2D(0, 80)
         ))
-        left_bottom = sketch.add_primitive(Line(
+        sketch.add_primitive(Line(
             start=Point2D(0, 20),
             end=Point2D(50, 20)
         ))
 
         # Create right half of rectangle
-        right_top = sketch.add_primitive(Line(
+        sketch.add_primitive(Line(
             start=Point2D(50, 80),
             end=Point2D(100, 80)
         ))
@@ -2026,7 +2026,7 @@ class TestSolidWorksRoundTripSymmetric:
             start=Point2D(100, 20),
             end=Point2D(100, 80)
         ))
-        right_bottom = sketch.add_primitive(Line(
+        sketch.add_primitive(Line(
             start=Point2D(50, 20),
             end=Point2D(100, 20)
         ))
@@ -2039,5 +2039,5 @@ class TestSolidWorksRoundTripSymmetric:
         exported = adapter.export_sketch()
 
         lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
-        non_construction = [l for l in lines if not l.construction]
+        non_construction = [ln for ln in lines if not ln.construction]
         assert len(non_construction) >= 6, "Should have at least 6 non-construction lines"

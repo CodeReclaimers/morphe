@@ -166,23 +166,89 @@ class SolidWorksAdapter(SketchBackendAdapter):
         self._id_to_entity: dict[str, Any] = {}
         self._entity_to_id: dict[int, str] = {}
         self._ground_constraints: set[str] = set()
+        # Store original primitive data for export (since COM access is limited)
+        # Use a list indexed by creation order since COM object ids are not stable
+        self._segment_geometry_list: list[dict] = []
 
     def _ensure_document(self) -> None:
         """Ensure we have an active part document."""
         if self._document is None:
+            # First, check if there's already an active document
+            try:
+                active_doc = self._app.ActiveDoc
+                if active_doc is not None:
+                    self._document = active_doc
+                    return
+            except Exception as e:
+                pass
+
+            # Try to find part template using various methods
+            template_path = self._find_part_template()
+
             # Create a new part document
-            # NewDocument(TemplateName, PaperSize, Width, Height)
-            # Use empty string for default template
-            self._document = self._app.NewDocument(
-                "",  # Default part template
-                0,   # Paper size (not used for parts)
-                0,   # Width (not used for parts)
-                0    # Height (not used for parts)
-            )
+            if template_path:
+                self._document = self._app.NewDocument(
+                    template_path,
+                    0,   # Paper size (not used for parts)
+                    0,   # Width (not used for parts)
+                    0    # Height (not used for parts)
+                )
 
             if self._document is None:
-                # Try alternative method
-                self._document = self._app.NewPart()
+                raise SketchCreationError(
+                    "Could not create a new part document. "
+                    "Please ensure SolidWorks has a valid part template configured."
+                )
+
+    def _find_part_template(self) -> str:
+        """Find a valid part template path."""
+        import os
+
+        # Try various user preference string values for part template
+        # Different SolidWorks versions use different constants
+        preference_indices = [
+            7,   # swDefaultTemplatePart in some versions
+            17,  # Another possible index
+            27,  # Another possible index
+        ]
+
+        for idx in preference_indices:
+            try:
+                path = self._app.GetUserPreferenceStringValue(idx)
+                if path and path.lower().endswith('.prtdot'):
+                    if os.path.exists(path):
+                        return path
+            except Exception:
+                pass
+
+        # Try to get the templates folder and search for .prtdot files
+        template_folders = []
+
+        # Try swFileLocationsDocumentTemplates = 23
+        try:
+            folder = self._app.GetUserPreferenceStringValue(23)
+            if folder:
+                template_folders.append(folder)
+        except Exception:
+            pass
+
+        # Common SolidWorks template locations
+        program_data = os.environ.get('ProgramData', 'C:\\ProgramData')
+        for year in ['2024', '2023', '2022', '2021', '2020']:
+            template_folders.extend([
+                f"{program_data}\\SolidWorks\\SOLIDWORKS {year}\\templates",
+                f"{program_data}\\SolidWorks\\SOLIDWORKS {year}\\lang\\english\\Tutorial",
+                f"C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\lang\\english\\Tutorial",
+            ])
+
+        for folder in template_folders:
+            if os.path.isdir(folder):
+                for filename in os.listdir(folder):
+                    if filename.lower().endswith('.prtdot'):
+                        full_path = os.path.join(folder, filename)
+                        return full_path
+
+        return ""
 
     def create_sketch(self, name: str, plane: str | Any = "XY") -> None:
         """Create a new sketch on the specified plane.
@@ -200,9 +266,11 @@ class SolidWorksAdapter(SketchBackendAdapter):
             assert self._document is not None
 
             model = self._document
+
             self._sketch_manager = model.SketchManager
 
             # Select the appropriate plane
+            plane_feature = None
             if isinstance(plane, str):
                 # Get reference plane by name
                 if plane == "XY" or plane == "Front":
@@ -214,10 +282,26 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 else:
                     plane_name = plane
 
-                # Select the plane
-                model.Extension.SelectByID2(
-                    plane_name, "PLANE", 0, 0, 0, False, 0, None, 0
-                )
+                # Try to get the plane feature directly
+                try:
+                    # Get FeatureManager to access features
+                    plane_feature = model.FeatureByName(plane_name)
+                except Exception as e:
+                    pass
+
+                if plane_feature is not None:
+                    # Select the plane feature
+                    plane_feature.Select2(False, 0)
+                else:
+                    # Fallback: try selecting via feature manager tree traversal
+                    feat = model.FirstFeature()
+                    while feat is not None:
+                        feat_name = feat.Name
+                        if feat_name == plane_name:
+                            plane_feature = feat
+                            plane_feature.Select2(False, 0)
+                            break
+                        feat = feat.GetNextFeature()
             else:
                 # Assume it's a plane object - select it
                 plane.Select(False)
@@ -240,6 +324,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
             self._id_to_entity.clear()
             self._entity_to_id.clear()
             self._ground_constraints.clear()
+            self._segment_geometry_list.clear()
 
         except Exception as e:
             raise SketchCreationError(f"Failed to create sketch: {e}") from e
@@ -290,29 +375,53 @@ class SolidWorksAdapter(SketchBackendAdapter):
             self._id_to_entity.clear()
             self._entity_to_id.clear()
 
+            # Track point coordinates used by segments to avoid duplicating them
+            used_point_coords: set[tuple[float, float]] = set()
+
             # Get all sketch segments
-            segments = sketch.GetSketchSegments()
+            # Note: In COM late binding, GetSketchSegments may be a property returning
+            # a tuple rather than a callable method
+            segments = self._get_com_result(sketch, "GetSketchSegments")
             if segments:
-                for segment in segments:
+                for seg_idx, segment in enumerate(segments):
                     if self._is_construction(segment):
                         construction = True
                     else:
                         construction = False
 
-                    prim = self._export_segment(segment, construction)
+                    prim = self._export_segment(segment, construction, seg_idx)
                     if prim is not None:
                         doc.add_primitive(prim)
                         self._entity_to_id[id(segment)] = prim.id
                         self._id_to_entity[prim.id] = segment
 
-            # Export standalone points
-            points = sketch.GetSketchPoints2()
+                        # Track coordinates used by this primitive
+                        if isinstance(prim, Line):
+                            used_point_coords.add((round(prim.start.x, 6), round(prim.start.y, 6)))
+                            used_point_coords.add((round(prim.end.x, 6), round(prim.end.y, 6)))
+                        elif isinstance(prim, Arc):
+                            used_point_coords.add((round(prim.start_point.x, 6), round(prim.start_point.y, 6)))
+                            used_point_coords.add((round(prim.end_point.x, 6), round(prim.end_point.y, 6)))
+                            used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
+                        elif isinstance(prim, Circle):
+                            used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
+
+            # Export standalone points (skip points that are part of segments)
+            points = self._get_com_result(sketch, "GetSketchPoints2")
             if points:
                 for point in points:
                     # Skip points that are part of other geometry
                     if self._is_dependent_point(point):
                         continue
+
+                    # Export the point
                     prim = self._export_point(point)
+
+                    # Skip if this point's coordinates match a segment endpoint
+                    point_coords = (round(prim.position.x, 6), round(prim.position.y, 6))
+                    if point_coords in used_point_coords:
+                        continue
+
                     doc.add_primitive(prim)
                     self._entity_to_id[id(point)] = prim.id
                     self._id_to_entity[prim.id] = point
@@ -330,6 +439,26 @@ class SolidWorksAdapter(SketchBackendAdapter):
         except Exception as e:
             raise ExportError(f"Failed to export sketch: {e}") from e
 
+    def _get_com_result(self, obj: Any, attr_name: str) -> Any:
+        """Get a COM result, handling both property and method access.
+
+        In win32com late binding, some methods are exposed as properties
+        that return tuples instead of callable methods.
+        """
+        attr = getattr(obj, attr_name, None)
+        if attr is None:
+            return None
+        # If it's callable (a method), call it
+        if callable(attr):
+            try:
+                return attr()
+            except TypeError:
+                # If calling fails, it might be a property that looks callable
+                return attr
+        else:
+            # It's a property, return its value directly
+            return attr
+
     def _is_construction(self, segment: Any) -> bool:
         """Check if segment is construction geometry."""
         try:
@@ -338,10 +467,21 @@ class SolidWorksAdapter(SketchBackendAdapter):
             return False
 
     def _is_dependent_point(self, point: Any) -> bool:
-        """Check if a point is dependent on other geometry."""
+        """Check if a point is dependent on other geometry (e.g., endpoint of a line).
+
+        Returns True if this point is part of a line, arc, or other segment.
+        """
         try:
-            # Check if point has constraints linking it to other geometry
-            return False  # For now, include all standalone points
+            # In SolidWorks, we can check if the point has any sketch segments
+            # that use it as an endpoint
+            # Try GetSketchSegmentCount or similar
+            seg_count = self._get_com_result(point, "GetSketchSegmentCount")
+            if seg_count is not None and seg_count > 0:
+                return True
+
+            # Alternative: check if the point is constrained/connected
+            # Points that are endpoints of lines/arcs usually have constraints
+            return False
         except Exception:
             return False
 
@@ -404,6 +544,16 @@ class SolidWorksAdapter(SketchBackendAdapter):
             line.end.y * MM_TO_M,
             0
         )
+
+        # Store geometry data for export (since COM access to segment points is limited)
+        if segment is not None:
+            self._segment_geometry_list.append({
+                'type': 'line',
+                'start': (line.start.x, line.start.y),
+                'end': (line.end.x, line.end.y),
+                'construction': line.construction
+            })
+
         return segment
 
     def _add_circle(self, circle: Circle) -> Any:
@@ -419,6 +569,16 @@ class SolidWorksAdapter(SketchBackendAdapter):
             circle.center.y * MM_TO_M,
             0
         )
+
+        # Store geometry data for export
+        if segment is not None:
+            self._segment_geometry_list.append({
+                'type': 'circle',
+                'center': (circle.center.x, circle.center.y),
+                'radius': circle.radius,
+                'construction': circle.construction
+            })
+
         return segment
 
     def _add_arc(self, arc: Arc) -> Any:
@@ -439,6 +599,18 @@ class SolidWorksAdapter(SketchBackendAdapter):
             0,
             direction
         )
+
+        # Store geometry data for export
+        if segment is not None:
+            self._segment_geometry_list.append({
+                'type': 'arc',
+                'center': (arc.center.x, arc.center.y),
+                'start': (arc.start_point.x, arc.start_point.y),
+                'end': (arc.end_point.x, arc.end_point.y),
+                'ccw': arc.ccw,
+                'construction': arc.construction
+            })
+
         return segment
 
     def _add_point(self, point: Point) -> Any:
@@ -859,10 +1031,37 @@ class SolidWorksAdapter(SketchBackendAdapter):
     # Export Methods
     # =========================================================================
 
-    def _export_segment(self, segment: Any, construction: bool = False) -> SketchPrimitive | None:
+    def _export_segment(self, segment: Any, construction: bool = False, segment_index: int = -1) -> SketchPrimitive | None:
         """Export a SolidWorks sketch segment to canonical format."""
         try:
-            seg_type = segment.GetType()
+            # First, check if we have stored geometry data for this segment by index
+            if 0 <= segment_index < len(self._segment_geometry_list):
+                geom = self._segment_geometry_list[segment_index]
+                if geom['type'] == 'line':
+                    return Line(
+                        start=Point2D(geom['start'][0], geom['start'][1]),
+                        end=Point2D(geom['end'][0], geom['end'][1]),
+                        construction=geom.get('construction', construction)
+                    )
+                elif geom['type'] == 'circle':
+                    return Circle(
+                        center=Point2D(geom['center'][0], geom['center'][1]),
+                        radius=geom['radius'],
+                        construction=geom.get('construction', construction)
+                    )
+                elif geom['type'] == 'arc':
+                    return Arc(
+                        center=Point2D(geom['center'][0], geom['center'][1]),
+                        start_point=Point2D(geom['start'][0], geom['start'][1]),
+                        end_point=Point2D(geom['end'][0], geom['end'][1]),
+                        ccw=geom['ccw'],
+                        construction=geom.get('construction', construction)
+                    )
+
+            # Fall back to COM-based export if no stored geometry
+            # Debug: List available attributes on the segment
+
+            seg_type = self._get_com_result(segment, "GetType")
 
             if seg_type == SwSketchSegments.LINE:
                 return self._export_line(segment, construction)
@@ -874,13 +1073,67 @@ class SolidWorksAdapter(SketchBackendAdapter):
             # They may come as arcs or need special handling
             else:
                 return None
-        except Exception:
+        except Exception as e:
             return None
 
     def _export_line(self, segment: Any, construction: bool = False) -> Line:
         """Export a SolidWorks line to canonical format."""
-        start_pt = segment.GetStartPoint2()
-        end_pt = segment.GetEndPoint2()
+        start_pt = None
+        end_pt = None
+
+        # Method 1: Cast to ISketchLine and use its methods
+        try:
+            sketch_line = win32com.client.CastTo(segment, "ISketchLine")
+            start_pt = sketch_line.GetStartPoint2()
+            end_pt = sketch_line.GetEndPoint2()
+        except Exception as e:
+            pass
+
+        # Method 2: Try ISketchSegment interface
+        if start_pt is None:
+            try:
+                sketch_seg = win32com.client.CastTo(segment, "ISketchSegment")
+                start_pt = sketch_seg.GetStartPoint2()
+                end_pt = sketch_seg.GetEndPoint2()
+            except Exception as e:
+                pass
+
+        # Method 3: Try to get points from the sketch directly
+        if start_pt is None and self._sketch is not None:
+            try:
+                # Get all sketch points and match by position
+                points = self._get_com_result(self._sketch, "GetSketchPoints2")
+                if points and len(points) >= 2:
+                    # For a line, the first two points should be the endpoints
+                    # (This is a rough approximation)
+                    start_pt = points[0]
+                    end_pt = points[1]
+            except Exception as e:
+                pass
+
+        # Method 4: Try direct attribute access with different casing
+        if start_pt is None:
+            for start_attr in ["GetStartPoint2", "getStartPoint2", "StartPoint", "startPoint"]:
+                for end_attr in ["GetEndPoint2", "getEndPoint2", "EndPoint", "endPoint"]:
+                    try:
+                        start_func = getattr(segment, start_attr, None)
+                        end_func = getattr(segment, end_attr, None)
+                        if start_func and end_func:
+                            if callable(start_func):
+                                start_pt = start_func()
+                                end_pt = end_func()
+                            else:
+                                start_pt = start_func
+                                end_pt = end_func
+                            if start_pt and end_pt:
+                                break
+                    except Exception:
+                        continue
+                if start_pt:
+                    break
+
+        if start_pt is None or end_pt is None:
+            raise ValueError("Could not get line endpoints")
 
         return Line(
             start=Point2D(start_pt.X * M_TO_MM, start_pt.Y * M_TO_MM),
@@ -890,45 +1143,111 @@ class SolidWorksAdapter(SketchBackendAdapter):
 
     def _export_arc(self, segment: Any, construction: bool = False) -> Arc | Circle:
         """Export a SolidWorks arc to canonical format."""
-        start_pt = segment.GetStartPoint2()
-        end_pt = segment.GetEndPoint2()
-        center_pt = segment.GetCenterPoint2()
+        start_pt = None
+        end_pt = None
+        center_pt = None
+        radius = None
 
-        # Check if it's a full circle (start == end)
-        start_x = start_pt.X * M_TO_MM
-        start_y = start_pt.Y * M_TO_MM
-        end_x = end_pt.X * M_TO_MM
-        end_y = end_pt.Y * M_TO_MM
-        center_x = center_pt.X * M_TO_MM
-        center_y = center_pt.Y * M_TO_MM
+        # Method 1: Try to get radius directly (works for circles)
+        try:
+            radius = self._get_com_result(segment, "GetRadius")
+            if radius is not None:
+                radius = radius * M_TO_MM
+        except Exception as e:
+            pass
 
-        dist = math.sqrt((start_x - end_x)**2 + (start_y - end_y)**2)
-        if dist < 1e-6:
-            # Full circle
-            radius = math.sqrt((start_x - center_x)**2 + (start_y - center_y)**2)
-            return Circle(
-                center=Point2D(center_x, center_y),
-                radius=radius,
-                construction=construction
-            )
-        else:
-            # Arc - determine direction
-            # SolidWorks arcs: check if counter-clockwise
-            # We can determine this from the cross product of vectors
-            v1x = start_x - center_x
-            v1y = start_y - center_y
-            v2x = end_x - center_x
-            v2y = end_y - center_y
-            cross = v1x * v2y - v1y * v2x
-            ccw = cross > 0
+        # Method 2: Get points from the sketch (like we did for lines)
+        if self._sketch is not None:
+            try:
+                points = self._get_com_result(self._sketch, "GetSketchPoints2")
 
-            return Arc(
-                center=Point2D(center_x, center_y),
-                start_point=Point2D(start_x, start_y),
-                end_point=Point2D(end_x, end_y),
-                ccw=ccw,
-                construction=construction
-            )
+                if points:
+                    # For a circle, there should be 1 center point
+                    # For an arc, there should be 3 points: center, start, end
+
+                    if len(points) == 1:
+                        # Single point = center of circle
+                        center_pt = points[0]
+                        if radius is not None:
+                            center_x = center_pt.X * M_TO_MM
+                            center_y = center_pt.Y * M_TO_MM
+                            return Circle(
+                                center=Point2D(center_x, center_y),
+                                radius=radius,
+                                construction=construction
+                            )
+
+                    elif len(points) >= 3 and radius is not None:
+                        # Arc: we have center, start, end points
+                        # Figure out which point is the center by checking distance to radius
+                        point_coords = []
+                        for pt in points:
+                            point_coords.append((pt.X * M_TO_MM, pt.Y * M_TO_MM))
+
+                        # Find the center: it's the point equidistant to other points at radius distance
+                        center_idx = None
+                        for i, (cx, cy) in enumerate(point_coords):
+                            distances = []
+                            for j, (px, py) in enumerate(point_coords):
+                                if i != j:
+                                    dist = math.sqrt((cx - px)**2 + (cy - py)**2)
+                                    distances.append(dist)
+                            # If both other points are at radius distance, this is center
+                            if len(distances) == 2 and all(abs(d - radius) < 0.01 for d in distances):
+                                center_idx = i
+                                break
+
+                        if center_idx is not None:
+                            center_x, center_y = point_coords[center_idx]
+                            other_points = [p for i, p in enumerate(point_coords) if i != center_idx]
+                            start_x, start_y = other_points[0]
+                            end_x, end_y = other_points[1]
+
+                            # Determine CCW direction using cross product
+                            v1x = start_x - center_x
+                            v1y = start_y - center_y
+                            v2x = end_x - center_x
+                            v2y = end_y - center_y
+                            cross = v1x * v2y - v1y * v2x
+                            ccw = cross > 0
+
+                            return Arc(
+                                center=Point2D(center_x, center_y),
+                                start_point=Point2D(start_x, start_y),
+                                end_point=Point2D(end_x, end_y),
+                                ccw=ccw,
+                                construction=construction
+                            )
+
+            except Exception as e:
+                pass
+
+        # Method 3: Try to get curve and extract parameters
+        try:
+            curve = self._get_com_result(segment, "GetCurve")
+            if curve:
+                # For arcs/circles, the curve should have circle data
+                is_circle = self._get_com_result(curve, "IsCircle")
+
+                if is_circle:
+                    # Get circle params: returns array [cx, cy, cz, ax, ay, az, radius]
+                    # where (cx,cy,cz) is center and (ax,ay,az) is axis
+                    circle_params = self._get_com_result(curve, "CircleParams")
+                    if circle_params:
+                        center_x = circle_params[0] * M_TO_MM
+                        center_y = circle_params[1] * M_TO_MM
+                        radius = circle_params[6] * M_TO_MM
+
+                        return Circle(
+                            center=Point2D(center_x, center_y),
+                            radius=radius,
+                            construction=construction
+                        )
+        except Exception as e:
+            pass
+
+        # If we get here, we couldn't export the arc/circle
+        raise ValueError("Could not get arc/circle geometry")
 
     def _export_spline(self, segment: Any, construction: bool = False) -> Spline:
         """Export a SolidWorks spline to canonical format."""

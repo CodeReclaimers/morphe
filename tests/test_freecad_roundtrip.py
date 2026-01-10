@@ -67,7 +67,7 @@ def find_freecad_cmd():
             )
             if result.returncode == 0:
                 return [freecad, "-c"]
-        except:
+        except Exception:
             pass
 
     return None
@@ -369,10 +369,10 @@ class TestFreeCADRoundTripComplex:
         sketch = SketchDocument(name="RectangleTest")
 
         # Create rectangle
-        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
-        l2 = sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(100, 50)))
-        l3 = sketch.add_primitive(Line(start=Point2D(100, 50), end=Point2D(0, 50)))
-        l4 = sketch.add_primitive(Line(start=Point2D(0, 50), end=Point2D(0, 0)))
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(100, 50)))
+        sketch.add_primitive(Line(start=Point2D(100, 50), end=Point2D(0, 50)))
+        sketch.add_primitive(Line(start=Point2D(0, 50), end=Point2D(0, 0)))
 
         input_json = sketch_to_json(sketch)
 

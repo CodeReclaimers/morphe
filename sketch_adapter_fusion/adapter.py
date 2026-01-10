@@ -21,7 +21,7 @@ from sketch_canonical.adapter import (
 from sketch_canonical.constraints import ConstraintType, SketchConstraint
 from sketch_canonical.document import SketchDocument, SolverStatus
 from sketch_canonical.primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
-from sketch_canonical.types import PointRef, PointType
+from sketch_canonical.types import Point2D, PointRef, PointType
 
 from .vertex_map import VertexMap
 
@@ -142,7 +142,7 @@ class FusionAdapter(SketchBackendAdapter):
         self.create_sketch(sketch.name)
 
         # Add all primitives
-        for prim_id, primitive in sketch.primitives.items():
+        for _prim_id, primitive in sketch.primitives.items():
             self.add_primitive(primitive)
 
         # Add all constraints
@@ -1082,13 +1082,11 @@ class FusionAdapter(SketchBackendAdapter):
         else:
             raise ValueError(f"Cannot convert {type(point)} to Point3D")
 
-    def _point3d_to_point2d(self, point3d) -> 'Point2D':
+    def _point3d_to_point2d(self, point3d) -> Point2D:
         """Convert a Fusion Point3D to a canonical Point2D.
 
         Handles unit conversion from cm to mm.
         """
-        from sketch_canonical.types import Point2D
-
         return Point2D(
             point3d.x * CM_TO_MM,
             point3d.y * CM_TO_MM

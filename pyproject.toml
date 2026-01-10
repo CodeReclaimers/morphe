@@ -59,5 +59,14 @@ target-version = ["py310"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
-ignore = ["E501"]
+ignore = [
+    "E501",  # Line too long
+    "N802",  # Function name should be lowercase (constraint constructors are intentionally PascalCase)
+    "B027",  # Empty method in abstract base class (intentional default implementations)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"sketch_adapter_fusion/test_scripts/*.py" = ["E402"]  # Imports after path manipulation

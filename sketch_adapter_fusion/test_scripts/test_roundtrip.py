@@ -68,7 +68,6 @@ from sketch_canonical.constraints import (
     Tangent,
     Vertical,
 )
-from sketch_canonical.document import SolverStatus
 
 
 class TestStatus(Enum):
@@ -110,7 +109,7 @@ class FusionTestRunner:
         if self._test_doc:
             try:
                 self._test_doc.close(False)  # Close without saving
-            except:
+            except Exception:
                 pass
         self._test_doc = None
         self._adapter = None
@@ -729,8 +728,8 @@ class FusionTestRunner:
         lines = list(exported.primitives.values())
 
         # Check horizontal lines are horizontal
-        horizontal_lines = [l for l in lines if abs(l.start.y - l.end.y) < 0.01]
-        vertical_lines = [l for l in lines if abs(l.start.x - l.end.x) < 0.01]
+        horizontal_lines = [ln for ln in lines if abs(ln.start.y - ln.end.y) < 0.01]
+        vertical_lines = [ln for ln in lines if abs(ln.start.x - ln.end.x) < 0.01]
 
         assert len(horizontal_lines) == 2, "Should have 2 horizontal lines"
         assert len(vertical_lines) == 2, "Should have 2 vertical lines"
@@ -1096,7 +1095,7 @@ class FusionTestRunner:
 
         # Check that the non-construction lines are symmetric about x=50
         for line in lines:
-            mid_x = (line.start.x + line.end.x) / 2
+            _mid_x = (line.start.x + line.end.x) / 2  # noqa: F841
             # The two lines' midpoints should be equidistant from x=50
             # This is a simplified check
 
@@ -1271,17 +1270,17 @@ class FusionTestRunner:
         sketch = SketchDocument(name="SlotTest")
 
         # Two parallel lines
-        l1 = sketch.add_primitive(Line(start=Point2D(20, 0), end=Point2D(80, 0)))
-        l2 = sketch.add_primitive(Line(start=Point2D(80, 40), end=Point2D(20, 40)))
+        sketch.add_primitive(Line(start=Point2D(20, 0), end=Point2D(80, 0)))
+        sketch.add_primitive(Line(start=Point2D(80, 40), end=Point2D(20, 40)))
 
         # Two semicircular arcs
-        arc1 = sketch.add_primitive(Arc(
+        sketch.add_primitive(Arc(
             center=Point2D(80, 20),
             start_point=Point2D(80, 0),
             end_point=Point2D(80, 40),
             ccw=True
         ))
-        arc2 = sketch.add_primitive(Arc(
+        sketch.add_primitive(Arc(
             center=Point2D(20, 20),
             start_point=Point2D(20, 40),
             end_point=Point2D(20, 0),
@@ -1858,8 +1857,8 @@ class FusionTestRunner:
 
         lines = list(exported.primitives.values())
         lengths = [
-            math.sqrt((l.end.x - l.start.x)**2 + (l.end.y - l.start.y)**2)
-            for l in lines
+            math.sqrt((ln.end.x - ln.start.x)**2 + (ln.end.y - ln.start.y)**2)
+            for ln in lines
         ]
         # All lines should have equal length
         assert abs(lengths[0] - lengths[1]) < 0.1, \

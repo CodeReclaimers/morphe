@@ -101,7 +101,7 @@ class ElementId:
         try:
             index = int(s[1:])
         except ValueError:
-            raise ValueError(f"Invalid element ID index: {s}")
+            raise ValueError(f"Invalid element ID index: {s}") from None
         return cls(prefix=prefix, index=index)
 
 

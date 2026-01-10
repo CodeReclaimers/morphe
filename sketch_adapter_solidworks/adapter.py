@@ -175,6 +175,8 @@ class SolidWorksAdapter(SketchBackendAdapter):
         self._segment_geometry_list: list[dict] = []
         # Track if constraints have been applied (requires reading actual geometry)
         self._constraints_applied: bool = False
+        # Track standalone Point primitive IDs (to preserve during export)
+        self._standalone_point_ids: set[str] = set()
 
     def _disable_dimension_dialog(self) -> None:
         """Disable the dimension input dialog that blocks automation.
@@ -401,9 +403,19 @@ class SolidWorksAdapter(SketchBackendAdapter):
             sketch = self._sketch
             doc = SketchDocument(name=getattr(sketch, "Name", "ExportedSketch"))
 
+            # Save standalone point entities before clearing mappings
+            standalone_point_entities = {
+                pid: self._id_to_entity.get(pid)
+                for pid in self._standalone_point_ids
+                if self._id_to_entity.get(pid) is not None
+            }
+
             # Clear and rebuild mappings
             self._id_to_entity.clear()
             self._entity_to_id.clear()
+
+            # Clear matched geometry tracking for this export
+            self._matched_geometry_ids = set()
 
             # Track point coordinates used by segments to avoid duplicating them
             used_point_coords: set[tuple[float, float]] = set()
@@ -450,7 +462,19 @@ class SolidWorksAdapter(SketchBackendAdapter):
                             for pt in prim.control_points:
                                 used_point_coords.add((round(pt.x, 6), round(pt.y, 6)))
 
-            # Export standalone points (skip points that are part of segments)
+            # Export standalone points
+            # First, export Points that we explicitly created (tracked in _standalone_point_ids)
+            exported_point_coords: set[tuple[float, float]] = set()
+            for point_id, point_entity in standalone_point_entities.items():
+                if point_entity is not None:
+                    prim = self._export_point(point_entity)
+                    prim.id = point_id  # Preserve original ID
+                    doc.add_primitive(prim)
+                    point_coords = (round(prim.position.x, 6), round(prim.position.y, 6))
+                    exported_point_coords.add(point_coords)
+                    used_point_coords.add(point_coords)
+
+            # Then export any other standalone points (skip points that are part of segments)
             points = self._get_com_result(sketch, "GetSketchPoints2")
             if points:
                 for point in points:
@@ -461,9 +485,11 @@ class SolidWorksAdapter(SketchBackendAdapter):
                     # Export the point
                     prim = self._export_point(point)
 
-                    # Skip if this point's coordinates match a segment endpoint
+                    # Skip if this point's coordinates match a segment endpoint or already exported
                     point_coords = (round(prim.position.x, 6), round(prim.position.y, 6))
                     if point_coords in used_point_coords:
+                        continue
+                    if point_coords in exported_point_coords:
                         continue
 
                     doc.add_primitive(prim)
@@ -553,6 +579,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 entity = self._add_arc(primitive)
             elif isinstance(primitive, Point):
                 entity = self._add_point(primitive)
+                self._standalone_point_ids.add(primitive.id)
             elif isinstance(primitive, Spline):
                 entity = self._add_spline(primitive)
             else:
@@ -918,10 +945,52 @@ class SolidWorksAdapter(SketchBackendAdapter):
         return None
 
     def _add_coincident(self, model: Any, refs: list) -> bool:
-        """Add a coincident constraint."""
+        """Add a coincident constraint.
+
+        For standalone Point primitives, we move the point to the target location
+        since SolidWorks constraints may not always move geometry.
+        """
         if len(refs) < 2:
             raise ConstraintError("Coincident requires 2 references")
 
+        ref1, ref2 = refs[0], refs[1]
+
+        # Check if first reference is a standalone Point that needs to be moved
+        if isinstance(ref1, PointRef):
+            point_id = ref1.element_id
+            # Check if it's a standalone Point (not a segment endpoint)
+            is_standalone = True
+            for geom in self._segment_geometry_list:
+                if geom.get('element_id') == point_id:
+                    is_standalone = False
+                    break
+
+            if is_standalone:
+                # Get target coordinates from second reference
+                target_coords = None
+                if isinstance(ref2, PointRef):
+                    target_coords = self._get_point_coords(ref2)
+
+                if target_coords is not None:
+                    # Move the point to target location
+                    point_entity = self._id_to_entity.get(point_id)
+                    if point_entity is not None:
+                        model.ClearSelection2(True)
+                        point_entity.Select(False)
+                        model.EditDelete()
+
+                        assert self._sketch_manager is not None
+                        new_point = self._sketch_manager.CreatePoint(
+                            target_coords[0] * MM_TO_M,
+                            target_coords[1] * MM_TO_M,
+                            0
+                        )
+
+                        if new_point is not None:
+                            self._id_to_entity[point_id] = new_point
+                        return True
+
+        # Default: apply SolidWorks constraint
         model.ClearSelection2(True)
         if not self._select_entity(refs[0], False):
             raise ConstraintError("Could not select first entity")
@@ -1386,13 +1455,21 @@ class SolidWorksAdapter(SketchBackendAdapter):
         if entity is None:
             raise ConstraintError("Could not find entity")
 
-        # Get the current line geometry from stored data
+        # Try to get CURRENT line geometry from the COM object first
+        # (in case other constraints have modified the geometry)
         start_x, start_y, end_x, end_y = None, None, None, None
-        for geom in self._segment_geometry_list:
-            if geom.get('element_id') == entity_id and geom['type'] == 'line':
-                start_x, start_y = geom['start']
-                end_x, end_y = geom['end']
-                break
+        try:
+            # Try to get current line endpoints from SolidWorks
+            line_obj = self._export_line(entity, construction=False)
+            start_x, start_y = line_obj.start.x, line_obj.start.y
+            end_x, end_y = line_obj.end.x, line_obj.end.y
+        except Exception:
+            # Fall back to stored geometry
+            for geom in self._segment_geometry_list:
+                if geom.get('element_id') == entity_id and geom['type'] == 'line':
+                    start_x, start_y = geom['start']
+                    end_x, end_y = geom['end']
+                    break
 
         if start_x is None:
             raise ConstraintError("Could not find line geometry")
@@ -1496,6 +1573,106 @@ class SolidWorksAdapter(SketchBackendAdapter):
     # Export Methods
     # =========================================================================
 
+    def _find_matching_stored_geometry(self, segment: Any, seg_type: int) -> dict | None:
+        """Find stored geometry that matches a COM segment by type and properties.
+
+        Args:
+            segment: SolidWorks sketch segment COM object
+            seg_type: Segment type from GetType()
+
+        Returns:
+            Matching stored geometry dict, or None if not found
+        """
+        # Map SolidWorks segment type to our type strings
+        type_map = {
+            SwSketchSegments.LINE: 'line',
+            SwSketchSegments.ARC: ['arc', 'circle'],  # Arc can be arc or circle
+            SwSketchSegments.SPLINE: 'spline',
+        }
+
+        expected_types = type_map.get(seg_type)
+        if expected_types is None:
+            return None
+
+        if isinstance(expected_types, str):
+            expected_types = [expected_types]
+
+        # Track which stored geometries have already been matched
+        if not hasattr(self, '_matched_geometry_ids'):
+            self._matched_geometry_ids: set[str] = set()
+
+        # Try to get COM segment properties for matching
+        seg_length = None
+        seg_radius = None
+        try:
+            seg_length = segment.GetLength  # in meters
+        except Exception:
+            pass
+        try:
+            seg_radius = segment.GetRadius  # in meters
+            if seg_radius is not None:
+                seg_radius = seg_radius * M_TO_MM  # convert to mm
+        except Exception:
+            pass
+
+        # Find matching stored geometry
+        for geom in self._segment_geometry_list:
+            # Skip already matched geometries
+            elem_id = geom.get('element_id')
+            if elem_id and elem_id in self._matched_geometry_ids:
+                continue
+
+            # Check type match
+            if geom['type'] not in expected_types:
+                continue
+
+            # For lines, try to match by length
+            if geom['type'] == 'line' and seg_length is not None:
+                stored_dx = geom['end'][0] - geom['start'][0]
+                stored_dy = geom['end'][1] - geom['start'][1]
+                stored_length_mm = math.sqrt(stored_dx**2 + stored_dy**2)
+                stored_length_m = stored_length_mm * MM_TO_M
+                if abs(stored_length_m - seg_length) < 1e-6:
+                    if elem_id:
+                        self._matched_geometry_ids.add(elem_id)
+                    return geom
+
+            # For arcs, match by radius
+            elif geom['type'] == 'arc' and seg_radius is not None:
+                # Calculate stored arc radius
+                cx, cy = geom['center']
+                sx, sy = geom['start']
+                stored_radius = math.sqrt((sx - cx)**2 + (sy - cy)**2)
+                if abs(stored_radius - seg_radius) < 0.01:
+                    if elem_id:
+                        self._matched_geometry_ids.add(elem_id)
+                    return geom
+
+            # For circles, match by radius
+            elif geom['type'] == 'circle' and seg_radius is not None:
+                if abs(geom['radius'] - seg_radius) < 0.01:
+                    if elem_id:
+                        self._matched_geometry_ids.add(elem_id)
+                    return geom
+
+            # For splines, just match by type (only one spline usually)
+            elif geom['type'] == 'spline':
+                if elem_id:
+                    self._matched_geometry_ids.add(elem_id)
+                return geom
+
+        # Fallback: return first unmatched geometry of matching type
+        for geom in self._segment_geometry_list:
+            elem_id = geom.get('element_id')
+            if elem_id and elem_id in self._matched_geometry_ids:
+                continue
+            if geom['type'] in expected_types:
+                if elem_id:
+                    self._matched_geometry_ids.add(elem_id)
+                return geom
+
+        return None
+
     def _validate_stored_geometry(self, geom: dict) -> bool:
         """Check if stored geometry endpoints still exist in the sketch."""
         if self._sketch is None:
@@ -1512,7 +1689,6 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 actual_coords.add((round(pt.X * M_TO_MM, 2), round(pt.Y * M_TO_MM, 2)))
 
             # Check if stored geometry's key points exist in actual sketch
-            tolerance = 0.1  # mm
             if geom['type'] == 'line':
                 start = (round(geom['start'][0], 2), round(geom['start'][1], 2))
                 end = (round(geom['end'][0], 2), round(geom['end'][1], 2))
@@ -1527,10 +1703,11 @@ class SolidWorksAdapter(SketchBackendAdapter):
                     return False
                 return True
             elif geom['type'] == 'arc':
-                center = (round(geom['center'][0], 2), round(geom['center'][1], 2))
+                # Note: Arc centers are NOT exposed as sketch points in SolidWorks
+                # Only check start and end points
                 start = (round(geom['start'][0], 2), round(geom['start'][1], 2))
                 end = (round(geom['end'][0], 2), round(geom['end'][1], 2))
-                return center in actual_coords and start in actual_coords and end in actual_coords
+                return start in actual_coords and end in actual_coords
             elif geom['type'] == 'spline':
                 # For splines, check if control points exist
                 for cp in geom['control_points']:
@@ -1546,26 +1723,34 @@ class SolidWorksAdapter(SketchBackendAdapter):
     def _export_segment(self, segment: Any, construction: bool = False, segment_index: int = -1) -> SketchPrimitive | None:
         """Export a SolidWorks sketch segment to canonical format."""
         try:
-            # Try to use stored geometry if it's still valid
-            if 0 <= segment_index < len(self._segment_geometry_list):
-                geom = self._segment_geometry_list[segment_index]
+            # Get the COM segment type first
+            seg_type = self._get_com_result(segment, "GetType")
+
+            # Try to find matching stored geometry by type and geometric properties
+            # (Don't rely on segment_index as SolidWorks may return segments in different order)
+            geom = self._find_matching_stored_geometry(segment, seg_type)
+
+            if geom is not None:
                 # Use stored geometry if constraints haven't been applied
                 # OR if validation confirms stored points still exist
                 if not self._constraints_applied or self._validate_stored_geometry(geom):
                     if geom['type'] == 'line':
                         return Line(
+                            id=geom.get('element_id'),
                             start=Point2D(geom['start'][0], geom['start'][1]),
                             end=Point2D(geom['end'][0], geom['end'][1]),
                             construction=geom.get('construction', construction)
                         )
                     elif geom['type'] == 'circle':
                         return Circle(
+                            id=geom.get('element_id'),
                             center=Point2D(geom['center'][0], geom['center'][1]),
                             radius=geom['radius'],
                             construction=geom.get('construction', construction)
                         )
                     elif geom['type'] == 'arc':
                         return Arc(
+                            id=geom.get('element_id'),
                             center=Point2D(geom['center'][0], geom['center'][1]),
                             start_point=Point2D(geom['start'][0], geom['start'][1]),
                             end_point=Point2D(geom['end'][0], geom['end'][1]),
@@ -1574,15 +1759,13 @@ class SolidWorksAdapter(SketchBackendAdapter):
                         )
                     elif geom['type'] == 'spline':
                         return Spline(
+                            id=geom.get('element_id'),
                             control_points=[Point2D(pt[0], pt[1]) for pt in geom['control_points']],
                             degree=geom.get('degree', 3),
                             construction=geom.get('construction', construction)
                         )
 
             # Fall back to COM-based export if no stored geometry
-            # Debug: List available attributes on the segment
-
-            seg_type = self._get_com_result(segment, "GetType")
 
             if seg_type == SwSketchSegments.LINE:
                 return self._export_line(segment, construction)

@@ -19,6 +19,8 @@ from sketch_canonical import (
     Concentric,
     Diameter,
     Distance,
+    DistanceX,
+    DistanceY,
     Equal,
     Fixed,
     Horizontal,
@@ -902,3 +904,838 @@ class TestSolidWorksRoundTripComplexScenarios:
 
         assert abs(lengths[0] - lengths[1]) < 1e-6
         assert abs(lengths[1] - lengths[2]) < 1e-6
+
+
+class TestSolidWorksRoundTripArcVariations:
+    """Tests for various arc configurations."""
+
+    def test_arc_clockwise(self, adapter):
+        """Test round-trip of a clockwise arc."""
+        sketch = SketchDocument(name="CWArcTest")
+        sketch.add_primitive(Arc(
+            center=Point2D(0, 0),
+            start_point=Point2D(50, 0),
+            end_point=Point2D(0, 50),
+            ccw=False
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, Arc)
+        start_radius = math.sqrt(arc.start_point.x**2 + arc.start_point.y**2)
+        assert abs(start_radius - 50) < 0.1
+
+    def test_arc_large_angle(self, adapter):
+        """Test round-trip of a large arc (> 180 degrees)."""
+        sketch = SketchDocument(name="LargeArcTest")
+        sketch.add_primitive(Arc(
+            center=Point2D(0, 0),
+            start_point=Point2D(50, 0),
+            end_point=Point2D(0, -50),
+            ccw=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, Arc)
+        start_radius = math.sqrt(arc.start_point.x**2 + arc.start_point.y**2)
+        assert abs(start_radius - 50) < 0.1
+
+    def test_arc_90_degree(self, adapter):
+        """Test 90-degree arc preserves angle precisely."""
+        sketch = SketchDocument(name="Arc90Test")
+        sketch.add_primitive(Arc(
+            center=Point2D(50, 50),
+            start_point=Point2D(80, 50),
+            end_point=Point2D(50, 80),
+            ccw=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, Arc)
+
+        # Calculate sweep angle
+        start_angle = math.atan2(arc.start_point.y - arc.center.y, arc.start_point.x - arc.center.x)
+        end_angle = math.atan2(arc.end_point.y - arc.center.y, arc.end_point.x - arc.center.x)
+        sweep = end_angle - start_angle
+        if sweep < 0:
+            sweep += 2 * math.pi
+        sweep_deg = math.degrees(sweep)
+
+        assert abs(sweep_deg - 90) < 1.0, f"Arc should be 90 degrees, got {sweep_deg}"
+
+    def test_arc_180_degree(self, adapter):
+        """Test 180-degree arc (semicircle) preserves angle precisely."""
+        sketch = SketchDocument(name="Arc180Test")
+        sketch.add_primitive(Arc(
+            center=Point2D(50, 50),
+            start_point=Point2D(80, 50),
+            end_point=Point2D(20, 50),
+            ccw=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, Arc)
+
+        # Calculate sweep angle
+        start_angle = math.atan2(arc.start_point.y - arc.center.y, arc.start_point.x - arc.center.x)
+        end_angle = math.atan2(arc.end_point.y - arc.center.y, arc.end_point.x - arc.center.x)
+        sweep = end_angle - start_angle
+        if sweep < 0:
+            sweep += 2 * math.pi
+        sweep_deg = math.degrees(sweep)
+
+        assert abs(sweep_deg - 180) < 1.0, f"Arc should be 180 degrees, got {sweep_deg}"
+
+    def test_arc_45_degree(self, adapter):
+        """Test 45-degree arc preserves angle precisely."""
+        r = 30
+        sketch = SketchDocument(name="Arc45Test")
+        sketch.add_primitive(Arc(
+            center=Point2D(50, 50),
+            start_point=Point2D(50 + r, 50),
+            end_point=Point2D(50 + r * math.cos(math.radians(45)),
+                             50 + r * math.sin(math.radians(45))),
+            ccw=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, Arc)
+
+        # Calculate sweep angle
+        start_angle = math.atan2(arc.start_point.y - arc.center.y, arc.start_point.x - arc.center.x)
+        end_angle = math.atan2(arc.end_point.y - arc.center.y, arc.end_point.x - arc.center.x)
+        sweep = end_angle - start_angle
+        if sweep < 0:
+            sweep += 2 * math.pi
+        sweep_deg = math.degrees(sweep)
+
+        assert abs(sweep_deg - 45) < 1.0, f"Arc should be 45 degrees, got {sweep_deg}"
+
+    def test_construction_arc(self, adapter):
+        """Test construction arc flag is preserved."""
+        sketch = SketchDocument(name="ConstructionArcTest")
+        sketch.add_primitive(Arc(
+            center=Point2D(50, 50),
+            start_point=Point2D(80, 50),
+            end_point=Point2D(50, 80),
+            ccw=True,
+            construction=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, Arc)
+        assert arc.construction is True
+
+
+class TestSolidWorksRoundTripCoincidentVariations:
+    """Tests for coincident constraint variations."""
+
+    def test_coincident_chain(self, adapter):
+        """Test chain of coincident constraints connecting multiple lines."""
+        sketch = SketchDocument(name="CoincidentChainTest")
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(50, 0), end=Point2D(50, 50)))
+        l3 = sketch.add_primitive(Line(start=Point2D(50, 50), end=Point2D(0, 50)))
+
+        sketch.add_constraint(Coincident(PointRef(l1, PointType.END), PointRef(l2, PointType.START)))
+        sketch.add_constraint(Coincident(PointRef(l2, PointType.END), PointRef(l3, PointType.START)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 3
+
+        # Check that endpoints are connected
+        l1_exp, l2_exp, l3_exp = lines[0], lines[1], lines[2]
+
+        # l1 end should be at l2 start
+        dist1 = math.sqrt((l1_exp.end.x - l2_exp.start.x)**2 + (l1_exp.end.y - l2_exp.start.y)**2)
+        assert dist1 < 1.0, f"l1 end should connect to l2 start, distance={dist1}"
+
+        # l2 end should be at l3 start
+        dist2 = math.sqrt((l2_exp.end.x - l3_exp.start.x)**2 + (l2_exp.end.y - l3_exp.start.y)**2)
+        assert dist2 < 1.0, f"l2 end should connect to l3 start, distance={dist2}"
+
+    def test_coincident_point_to_line_endpoint(self, adapter):
+        """Test coincident constraint between a point and a line endpoint."""
+        sketch = SketchDocument(name="CoincidentPointLineTest")
+        line_id = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        point_id = sketch.add_primitive(Point(position=Point2D(90, 10)))
+
+        sketch.add_constraint(Coincident(
+            PointRef(point_id, PointType.CENTER),
+            PointRef(line_id, PointType.END)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        prims = list(exported.primitives.values())
+        line = next(p for p in prims if isinstance(p, Line))
+        point = next(p for p in prims if isinstance(p, Point))
+
+        # Point should be at line's end
+        dist = math.sqrt((point.position.x - line.end.x)**2 + (point.position.y - line.end.y)**2)
+        assert dist < 1.0, f"Point should be at line end, distance={dist}"
+
+    def test_coincident_point_to_circle_center(self, adapter):
+        """Test coincident constraint between a point and a circle center."""
+        sketch = SketchDocument(name="CoincidentPointCircleTest")
+        circle_id = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=25))
+        point_id = sketch.add_primitive(Point(position=Point2D(40, 40)))
+
+        sketch.add_constraint(Coincident(
+            PointRef(point_id, PointType.CENTER),
+            PointRef(circle_id, PointType.CENTER)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        prims = list(exported.primitives.values())
+        circle = next(p for p in prims if isinstance(p, Circle))
+        point = next(p for p in prims if isinstance(p, Point))
+
+        # Point should be at circle center
+        dist = math.sqrt((point.position.x - circle.center.x)**2 + (point.position.y - circle.center.y)**2)
+        assert dist < 1.0, f"Point should be at circle center, distance={dist}"
+
+
+class TestSolidWorksRoundTripDistanceConstraints:
+    """Tests for distance X and Y constraints."""
+
+    def test_distance_x_constraint(self, adapter):
+        """Test horizontal distance constraint."""
+        sketch = SketchDocument(name="DistanceXTest")
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(30, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(50, 20), end=Point2D(80, 20)))
+
+        sketch.add_constraint(DistanceX(
+            PointRef(l1, PointType.END),
+            40,
+            PointRef(l2, PointType.START)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        l1_end = lines[0].end
+        l2_start = lines[1].start
+
+        dx = abs(l2_start.x - l1_end.x)
+        assert abs(dx - 40) < 1.0, f"Horizontal distance should be 40, got {dx}"
+
+    def test_distance_y_constraint(self, adapter):
+        """Test vertical distance constraint."""
+        sketch = SketchDocument(name="DistanceYTest")
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(0, 30), end=Point2D(50, 30)))
+
+        sketch.add_constraint(DistanceY(
+            PointRef(l1, PointType.START),
+            50,
+            PointRef(l2, PointType.START)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        l1_start = lines[0].start
+        l2_start = lines[1].start
+
+        dy = abs(l2_start.y - l1_start.y)
+        assert abs(dy - 50) < 1.0, f"Vertical distance should be 50, got {dy}"
+
+
+class TestSolidWorksRoundTripSplineAdvanced:
+    """Advanced spline tests including higher degrees and special cases."""
+
+    def test_higher_degree_spline(self, adapter):
+        """Test round-trip of a degree-4 B-spline."""
+        sketch = SketchDocument(name="Degree4SplineTest")
+
+        spline = Spline.create_uniform_bspline(
+            control_points=[
+                Point2D(0, 0),
+                Point2D(25, 50),
+                Point2D(50, 0),
+                Point2D(75, 50),
+                Point2D(100, 0)
+            ],
+            degree=4
+        )
+        sketch.add_primitive(spline)
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        splines = [p for p in exported.primitives.values() if isinstance(p, Spline)]
+        assert len(splines) >= 1, "Should have at least 1 spline"
+
+    def test_many_control_points_spline(self, adapter):
+        """Test spline with many control points."""
+        sketch = SketchDocument(name="ManyPointsSplineTest")
+
+        # Create a wavy spline with 10 control points
+        control_points = []
+        for i in range(10):
+            y = 25 * math.sin(i * math.pi / 3)
+            control_points.append(Point2D(i * 20, 50 + y))
+
+        spline = Spline.create_uniform_bspline(control_points=control_points, degree=3)
+        sketch.add_primitive(spline)
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        splines = [p for p in exported.primitives.values() if isinstance(p, Spline)]
+        assert len(splines) >= 1, "Should have at least 1 spline"
+        assert len(splines[0].control_points) >= 5, "Spline should have multiple control points"
+
+    def test_quadratic_bspline(self, adapter):
+        """Test degree-2 (quadratic) B-spline."""
+        sketch = SketchDocument(name="QuadraticSplineTest")
+
+        spline = Spline.create_uniform_bspline(
+            control_points=[
+                Point2D(0, 0),
+                Point2D(50, 100),
+                Point2D(100, 0)
+            ],
+            degree=2
+        )
+        sketch.add_primitive(spline)
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        splines = [p for p in exported.primitives.values() if isinstance(p, Spline)]
+        assert len(splines) >= 1, "Should have at least 1 spline"
+
+    def test_periodic_spline(self, adapter):
+        """Test closed/periodic spline round-trip."""
+        control_points = [
+            Point2D(50, 0),
+            Point2D(100, 25),
+            Point2D(100, 75),
+            Point2D(50, 100),
+            Point2D(0, 75),
+            Point2D(0, 25),
+            Point2D(50, 0),
+        ]
+
+        sketch = SketchDocument(name="PeriodicSplineTest")
+        spline = Spline.create_uniform_bspline(control_points=control_points, degree=3)
+        sketch.add_primitive(spline)
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        splines = [p for p in exported.primitives.values() if isinstance(p, Spline)]
+        assert len(splines) >= 1, "Should have at least 1 spline"
+
+    def test_weighted_spline(self, adapter):
+        """Test spline with non-uniform weights (NURBS)."""
+        sketch = SketchDocument(name="WeightedSplineTest")
+
+        spline = Spline(
+            control_points=[
+                Point2D(0, 0),
+                Point2D(50, 100),
+                Point2D(100, 0)
+            ],
+            degree=2,
+            knots=[0, 0, 0, 1, 1, 1],
+            weights=[1.0, 2.0, 1.0]  # Higher weight on middle point
+        )
+        sketch.add_primitive(spline)
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        splines = [p for p in exported.primitives.values() if isinstance(p, Spline)]
+        assert len(splines) >= 1, "Should have at least 1 spline"
+
+
+class TestSolidWorksRoundTripPrecision:
+    """Tests for precision of constraints and dimensions."""
+
+    def test_angle_precision(self, adapter):
+        """Test angle constraint precision."""
+        sketch = SketchDocument(name="AnglePrecisionTest")
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 50)))
+
+        sketch.add_constraint(Angle(l1, l2, 30))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+
+        # Calculate angle between lines
+        dx1 = lines[0].end.x - lines[0].start.x
+        dy1 = lines[0].end.y - lines[0].start.y
+        dx2 = lines[1].end.x - lines[1].start.x
+        dy2 = lines[1].end.y - lines[1].start.y
+
+        angle1 = math.atan2(dy1, dx1)
+        angle2 = math.atan2(dy2, dx2)
+        angle_diff = abs(math.degrees(angle2 - angle1))
+
+        assert abs(angle_diff - 30) < 1.0, f"Angle should be 30 degrees, got {angle_diff}"
+
+    def test_length_precision(self, adapter):
+        """Test length constraint precision."""
+        sketch = SketchDocument(name="LengthPrecisionTest")
+        line_id = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+
+        sketch.add_constraint(Length(line_id, 123.456))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        line = list(exported.primitives.values())[0]
+        length = math.sqrt((line.end.x - line.start.x)**2 + (line.end.y - line.start.y)**2)
+
+        assert abs(length - 123.456) < 0.01, f"Length should be 123.456, got {length}"
+
+    def test_radius_precision(self, adapter):
+        """Test radius constraint precision."""
+        sketch = SketchDocument(name="RadiusPrecisionTest")
+        circle_id = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=20))
+
+        sketch.add_constraint(Radius(PointRef(circle_id, PointType.CENTER), 37.5))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        circle = list(exported.primitives.values())[0]
+        assert abs(circle.radius - 37.5) < 0.01, f"Radius should be 37.5, got {circle.radius}"
+
+
+class TestSolidWorksRoundTripMultipleConstraints:
+    """Tests for multiple constraints on single entities."""
+
+    def test_multiple_constraints_circle(self, adapter):
+        """Test circle with both radius and concentric constraints."""
+        sketch = SketchDocument(name="MultiConstraintCircleTest")
+        c1 = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=20))
+        c2 = sketch.add_primitive(Circle(center=Point2D(60, 60), radius=30))
+
+        sketch.add_constraint(Concentric(c1, c2))
+        sketch.add_constraint(Radius(PointRef(c2, PointType.CENTER), 40))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        circles = [p for p in exported.primitives.values() if isinstance(p, Circle)]
+        assert len(circles) == 2
+
+        # Check concentric (centers should match)
+        dist = math.sqrt((circles[0].center.x - circles[1].center.x)**2 +
+                        (circles[0].center.y - circles[1].center.y)**2)
+        assert dist < 1.0, f"Circles should be concentric, center distance={dist}"
+
+    def test_multiple_constraints_horizontal_length(self, adapter):
+        """Test line with both horizontal and length constraints."""
+        sketch = SketchDocument(name="HorizontalLengthTest")
+        line_id = sketch.add_primitive(Line(start=Point2D(0, 10), end=Point2D(50, 20)))
+
+        sketch.add_constraint(Horizontal(line_id))
+        sketch.add_constraint(Length(line_id, 80))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        line = list(exported.primitives.values())[0]
+
+        # Check horizontal
+        assert abs(line.start.y - line.end.y) < 1.0, "Line should be horizontal"
+
+        # Check length
+        length = math.sqrt((line.end.x - line.start.x)**2 + (line.end.y - line.start.y)**2)
+        assert abs(length - 80) < 1.0, f"Length should be 80, got {length}"
+
+    def test_multiple_constraints_vertical_length(self, adapter):
+        """Test line with both vertical and length constraints."""
+        sketch = SketchDocument(name="VerticalLengthTest")
+        line_id = sketch.add_primitive(Line(start=Point2D(10, 0), end=Point2D(20, 50)))
+
+        sketch.add_constraint(Vertical(line_id))
+        sketch.add_constraint(Length(line_id, 60))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        line = list(exported.primitives.values())[0]
+
+        # Check vertical
+        assert abs(line.start.x - line.end.x) < 1.0, "Line should be vertical"
+
+        # Check length
+        length = math.sqrt((line.end.x - line.start.x)**2 + (line.end.y - line.start.y)**2)
+        assert abs(length - 60) < 1.0, f"Length should be 60, got {length}"
+
+
+class TestSolidWorksRoundTripProfiles:
+    """Tests for complex profile geometries."""
+
+    def test_slot_profile(self, adapter):
+        """Test slot profile (rectangle with semicircular ends)."""
+        sketch = SketchDocument(name="SlotProfileTest")
+
+        # Create a slot: two parallel lines connected by two semicircular arcs
+        l1 = sketch.add_primitive(Line(start=Point2D(20, 0), end=Point2D(80, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(80, 40), end=Point2D(20, 40)))
+
+        # Right semicircle
+        arc1 = sketch.add_primitive(Arc(
+            center=Point2D(80, 20),
+            start_point=Point2D(80, 0),
+            end_point=Point2D(80, 40),
+            ccw=False
+        ))
+
+        # Left semicircle
+        arc2 = sketch.add_primitive(Arc(
+            center=Point2D(20, 20),
+            start_point=Point2D(20, 40),
+            end_point=Point2D(20, 0),
+            ccw=False
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Should have 2 lines and 2 arcs
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+
+        assert len(lines) == 2, f"Expected 2 lines, got {len(lines)}"
+        assert len(arcs) == 2, f"Expected 2 arcs, got {len(arcs)}"
+
+    def test_smooth_corner_profile(self, adapter):
+        """Test profile with tangent arc corners."""
+        sketch = SketchDocument(name="SmoothCornerTest")
+
+        # Create an L-shape with a fillet
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(0, 50)))
+        arc = sketch.add_primitive(Arc(
+            center=Point2D(10, 50),
+            start_point=Point2D(0, 50),
+            end_point=Point2D(10, 60),
+            ccw=True
+        ))
+        l2 = sketch.add_primitive(Line(start=Point2D(10, 60), end=Point2D(60, 60)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+
+        assert len(lines) == 2, f"Expected 2 lines, got {len(lines)}"
+        assert len(arcs) == 1, f"Expected 1 arc, got {len(arcs)}"
+
+    def test_nested_geometry(self, adapter):
+        """Test nested shapes (circle inside rectangle)."""
+        sketch = SketchDocument(name="NestedGeometryTest")
+
+        # Outer rectangle
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(100, 80)))
+        sketch.add_primitive(Line(start=Point2D(100, 80), end=Point2D(0, 80)))
+        sketch.add_primitive(Line(start=Point2D(0, 80), end=Point2D(0, 0)))
+
+        # Inner circle
+        sketch.add_primitive(Circle(center=Point2D(50, 40), radius=20))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        circles = [p for p in exported.primitives.values() if isinstance(p, Circle)]
+
+        assert len(lines) == 4, f"Expected 4 lines, got {len(lines)}"
+        assert len(circles) == 1, f"Expected 1 circle, got {len(circles)}"
+
+    def test_multiple_points_standalone(self, adapter):
+        """Test multiple standalone points."""
+        sketch = SketchDocument(name="MultiplePointsTest")
+
+        sketch.add_primitive(Point(position=Point2D(10, 10)))
+        sketch.add_primitive(Point(position=Point2D(50, 50)))
+        sketch.add_primitive(Point(position=Point2D(90, 10)))
+        sketch.add_primitive(Point(position=Point2D(50, 90)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+        assert len(points) == 4, f"Expected 4 points, got {len(points)}"
+
+
+class TestSolidWorksRoundTripConstraintExport:
+    """Tests for constraint export functionality."""
+
+    def test_constraint_export_horizontal(self, adapter):
+        """Test that horizontal constraint is applied correctly."""
+        sketch = SketchDocument(name="ExportHorizontalTest")
+        line_id = sketch.add_primitive(Line(start=Point2D(0, 10), end=Point2D(100, 20)))
+        sketch.add_constraint(Horizontal(line_id))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        line = list(exported.primitives.values())[0]
+        # Line should be horizontal after constraint
+        assert abs(line.start.y - line.end.y) < 1.0, "Line should be horizontal"
+
+    def test_constraint_export_perpendicular(self, adapter):
+        """Test that perpendicular constraint is applied correctly."""
+        sketch = SketchDocument(name="ExportPerpTest")
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(50, 0), end=Point2D(60, 40)))
+        sketch.add_constraint(Perpendicular(l1, l2))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+
+        # Calculate angle between lines
+        dx1 = lines[0].end.x - lines[0].start.x
+        dy1 = lines[0].end.y - lines[0].start.y
+        dx2 = lines[1].end.x - lines[1].start.x
+        dy2 = lines[1].end.y - lines[1].start.y
+
+        # Dot product should be near zero for perpendicular lines
+        dot = dx1 * dx2 + dy1 * dy2
+        len1 = math.sqrt(dx1**2 + dy1**2)
+        len2 = math.sqrt(dx2**2 + dy2**2)
+        cos_angle = dot / (len1 * len2) if len1 > 0 and len2 > 0 else 0
+
+        assert abs(cos_angle) < 0.1, f"Lines should be perpendicular, cos(angle)={cos_angle}"
+
+    def test_constraint_export_length(self, adapter):
+        """Test that length constraint is applied correctly."""
+        sketch = SketchDocument(name="ExportLengthTest")
+        line_id = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(30, 0)))
+        sketch.add_constraint(Length(line_id, 75))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        line = list(exported.primitives.values())[0]
+        length = math.sqrt((line.end.x - line.start.x)**2 + (line.end.y - line.start.y)**2)
+        assert abs(length - 75) < 1.0, f"Length should be 75, got {length}"
+
+
+class TestSolidWorksRoundTripAdvanced:
+    """Additional advanced tests."""
+
+    def test_fully_constrained_rectangle(self, adapter):
+        """Test a fully constrained rectangle with multiple constraints."""
+        sketch = SketchDocument(name="FullRectTest")
+
+        # Create rectangle
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(100, 50)))
+        l3 = sketch.add_primitive(Line(start=Point2D(100, 50), end=Point2D(0, 50)))
+        l4 = sketch.add_primitive(Line(start=Point2D(0, 50), end=Point2D(0, 0)))
+
+        # Add constraints to make it a proper rectangle
+        sketch.add_constraint(Horizontal(l1))
+        sketch.add_constraint(Horizontal(l3))
+        sketch.add_constraint(Vertical(l2))
+        sketch.add_constraint(Vertical(l4))
+
+        # Connect corners
+        sketch.add_constraint(Coincident(PointRef(l1, PointType.END), PointRef(l2, PointType.START)))
+        sketch.add_constraint(Coincident(PointRef(l2, PointType.END), PointRef(l3, PointType.START)))
+        sketch.add_constraint(Coincident(PointRef(l3, PointType.END), PointRef(l4, PointType.START)))
+        sketch.add_constraint(Coincident(PointRef(l4, PointType.END), PointRef(l1, PointType.START)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 4
+
+        # Check horizontal lines are horizontal
+        horizontal_count = sum(1 for l in lines if abs(l.start.y - l.end.y) < 0.5)
+        vertical_count = sum(1 for l in lines if abs(l.start.x - l.end.x) < 0.5)
+
+        assert horizontal_count == 2, f"Should have 2 horizontal lines, got {horizontal_count}"
+        assert vertical_count == 2, f"Should have 2 vertical lines, got {vertical_count}"
+
+    def test_solver_status_fullyconstrained(self, adapter):
+        """Test that solver reports fully constrained status."""
+        sketch = SketchDocument(name="FullyConstrainedTest")
+        point_id = sketch.add_primitive(Point(position=Point2D(50, 50)))
+        sketch.add_constraint(Fixed(point_id))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        status, dof = adapter.get_solver_status()
+
+        # Should be fully constrained or have 0 DOF
+        assert status == SolverStatus.FULLY_CONSTRAINED or dof == 0
+
+    def test_equal_chain_four_circles(self, adapter):
+        """Test equal constraint chain on four circles."""
+        sketch = SketchDocument(name="EqualChain4CirclesTest")
+        c1 = sketch.add_primitive(Circle(center=Point2D(20, 50), radius=10))
+        c2 = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=15))
+        c3 = sketch.add_primitive(Circle(center=Point2D(80, 50), radius=20))
+        c4 = sketch.add_primitive(Circle(center=Point2D(110, 50), radius=25))
+
+        sketch.add_constraint(Equal(c1, c2))
+        sketch.add_constraint(Equal(c2, c3))
+        sketch.add_constraint(Equal(c3, c4))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        circles = [p for p in exported.primitives.values() if isinstance(p, Circle)]
+        assert len(circles) == 4
+
+        # All radii should be equal
+        radii = [c.radius for c in circles]
+        for r in radii[1:]:
+            assert abs(r - radii[0]) < 1.0, f"All radii should be equal: {radii}"
+
+    def test_tangent_arc_line(self, adapter):
+        """Test tangent constraint between arc and line."""
+        sketch = SketchDocument(name="TangentArcLineTest")
+        arc_id = sketch.add_primitive(Arc(
+            center=Point2D(50, 50),
+            start_point=Point2D(80, 50),
+            end_point=Point2D(50, 80),
+            ccw=True
+        ))
+        line_id = sketch.add_primitive(Line(start=Point2D(80, 50), end=Point2D(120, 50)))
+
+        sketch.add_constraint(Tangent(arc_id, line_id))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+
+        assert len(arcs) >= 1, "Should have at least 1 arc"
+        assert len(lines) >= 1, "Should have at least 1 line"
+
+    def test_arc_tangent_to_two_lines(self, adapter):
+        """Test arc tangent to two lines (fillet-like)."""
+        sketch = SketchDocument(name="ArcTangent2LinesTest")
+
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(50, 50), end=Point2D(50, 0)))
+
+        # Arc connecting the two lines
+        arc = sketch.add_primitive(Arc(
+            center=Point2D(50, 0),
+            start_point=Point2D(50, 0),
+            end_point=Point2D(50, 0),
+            ccw=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 2
+
+    def test_very_large_dimensions(self, adapter):
+        """Test geometry with very large dimensions."""
+        sketch = SketchDocument(name="LargeDimensionsTest")
+        sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(10000, 5000)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        line = list(exported.primitives.values())[0]
+        assert abs(line.end.x - 10000) < 1, f"X should be 10000, got {line.end.x}"
+        assert abs(line.end.y - 5000) < 1, f"Y should be 5000, got {line.end.y}"
+
+    def test_very_small_dimensions(self, adapter):
+        """Test geometry with very small dimensions."""
+        sketch = SketchDocument(name="SmallDimensionsTest")
+        sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(0.1, 0.05)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        line = list(exported.primitives.values())[0]
+        assert abs(line.end.x - 0.1) < 0.01, f"X should be 0.1, got {line.end.x}"
+        assert abs(line.end.y - 0.05) < 0.01, f"Y should be 0.05, got {line.end.y}"

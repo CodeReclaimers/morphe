@@ -5,7 +5,7 @@
 [![Tests](https://github.com/codereclaimers/canonical_sketch/actions/workflows/test.yml/badge.svg)](https://github.com/codereclaimers/canonical_sketch/actions/workflows/test.yml)
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
 
-A CAD-agnostic 2D sketch geometry and constraint representation with adapter support for FreeCAD and Fusion 360.
+A CAD-agnostic 2D sketch geometry and constraint representation with adapter support for FreeCAD, Fusion 360, SolidWorks, and Autodesk Inventor.
 
 ## Overview
 
@@ -14,6 +14,8 @@ This project provides:
 - **`sketch_canonical`**: Platform-independent schema for 2D sketch geometry and constraints
 - **`sketch_adapter_freecad`**: Adapter for FreeCAD's Sketcher workbench
 - **`sketch_adapter_fusion`**: Adapter for Autodesk Fusion 360
+- **`sketch_adapter_solidworks`**: Adapter for SolidWorks (Windows only, via COM)
+- **`sketch_adapter_inventor`**: Adapter for Autodesk Inventor (Windows only, via COM)
 
 The canonical format enables constrained sketches to be stored, transferred, and manipulated independently of any specific CAD system.
 
@@ -25,9 +27,19 @@ See [SPECIFICATION.md](SPECIFICATION.md) for the complete technical specificatio
 pip install -e .
 ```
 
-For FreeCAD integration, ensure FreeCAD is installed and accessible (via snap, package manager, or `PYTHONPATH`).
+### Platform-Specific Requirements
 
-For Fusion 360 integration, the adapter must be run from within Fusion 360's Python environment (as a script or add-in).
+| Adapter | Platform | Requirements |
+|---------|----------|--------------|
+| FreeCAD | Linux, macOS, Windows | FreeCAD installed and accessible via `PYTHONPATH` |
+| Fusion 360 | Windows, macOS | Run from within Fusion 360's Python environment |
+| SolidWorks | Windows only | SolidWorks installed, `pywin32` package |
+| Inventor | Windows only | Autodesk Inventor installed, `pywin32` package |
+
+For Windows COM-based adapters (SolidWorks, Inventor):
+```bash
+pip install pywin32
+```
 
 ## Quick Start
 
@@ -94,10 +106,72 @@ def run(context):
     print(f"Status: {status.name}, DOF: {dof}")
 ```
 
+## SolidWorks Integration
+
+The SolidWorks adapter uses COM automation via `pywin32` (Windows only):
+
+```python
+from sketch_canonical import load_sketch
+from sketch_adapter_solidworks import SolidWorksAdapter, SOLIDWORKS_AVAILABLE
+
+if SOLIDWORKS_AVAILABLE:
+    sketch = load_sketch("my_sketch.json")
+    adapter = SolidWorksAdapter()
+    adapter.create_sketch(sketch.name)
+    adapter.load_sketch(sketch)
+
+    # Export back to canonical format
+    exported = adapter.export_sketch()
+    print(f"Exported {len(exported.primitives)} primitives")
+
+    status, dof = adapter.get_solver_status()
+    print(f"Status: {status.name}, DOF: {dof}")
+```
+
+**Notes:**
+- Requires SolidWorks to be installed and running (or will launch automatically)
+- The adapter connects to an existing SolidWorks instance or starts a new one
+- Sketches are created on the Front Plane by default (XY plane)
+- Dimensional constraints use geometry recreation to avoid blocking dialogs
+
 **Supported Features:**
-- All primitive types: Line, Arc, Circle, Point, Spline (NURBS)
-- All geometric constraints: Coincident, Tangent, Parallel, Perpendicular, etc.
-- All dimensional constraints: Length, Radius, Diameter, Angle, Distance
+- All primitive types: Line, Arc, Circle, Point, Spline
+- All geometric constraints: Coincident, Tangent, Parallel, Perpendicular, Horizontal, Vertical, Equal, Concentric, Collinear, Midpoint, Fixed, Symmetric
+- All dimensional constraints: Length, Radius, Diameter, Angle, Distance, DistanceX, DistanceY
+- Construction geometry
+- Solver status and DOF reporting
+
+## Inventor Integration
+
+The Inventor adapter uses COM automation via `pywin32` (Windows only):
+
+```python
+from sketch_canonical import load_sketch
+from sketch_adapter_inventor import InventorAdapter, INVENTOR_AVAILABLE
+
+if INVENTOR_AVAILABLE:
+    sketch = load_sketch("my_sketch.json")
+    adapter = InventorAdapter()
+    adapter.create_sketch(sketch.name)
+    adapter.load_sketch(sketch)
+
+    # Export back to canonical format
+    exported = adapter.export_sketch()
+    print(f"Exported {len(exported.primitives)} primitives")
+
+    status, dof = adapter.get_solver_status()
+    print(f"Status: {status.name}, DOF: {dof}")
+```
+
+**Notes:**
+- Requires Autodesk Inventor to be installed and running (or will launch automatically)
+- The adapter connects to an existing Inventor instance or starts a new one
+- Sketches are created on the XY plane by default
+
+**Supported Features:**
+- All primitive types: Line, Arc, Circle, Point, Spline
+- All geometric constraints: Coincident, Tangent, Parallel, Perpendicular, Horizontal, Vertical, Equal, Concentric, Collinear, Midpoint, Fixed, Symmetric
+- All dimensional constraints: Length, Radius, Diameter, Angle, Distance, DistanceX, DistanceY
 - Construction geometry
 - Solver status and DOF reporting
 
@@ -120,6 +194,23 @@ The Fusion 360 test suite (73 tests) must be run as a script inside Fusion 360:
 1. Open Fusion 360
 2. Go to Utilities > Add-Ins > Scripts
 3. Add and run the test script from `sketch_adapter_fusion/tests/`
+
+**SolidWorks adapter tests (requires SolidWorks on Windows):**
+```bash
+pytest tests/test_solidworks_roundtrip.py -v
+```
+
+The SolidWorks test suite includes 80 tests covering:
+- Basic and complex geometry primitives
+- All constraint types including symmetric constraints
+- Solver status detection
+- Precision and edge cases
+- Arc variations and tangent constraints
+
+**Inventor adapter tests (requires Inventor on Windows):**
+```bash
+pytest tests/test_inventor_roundtrip.py -v
+```
 
 Tests cover all primitives, constraints, solver status, and edge cases.
 

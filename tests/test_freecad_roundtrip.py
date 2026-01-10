@@ -20,6 +20,7 @@ from sketch_canonical import (
     Arc,
     Circle,
     Coincident,
+    Collinear,
     Concentric,
     Diameter,
     Distance,
@@ -28,7 +29,9 @@ from sketch_canonical import (
     Equal,
     Fixed,
     Horizontal,
+    Length,
     Line,
+    MidpointConstraint,
     Parallel,
     Perpendicular,
     Point,
@@ -3018,6 +3021,322 @@ print(json.dumps(result))
         result = run_in_freecad(script)
         assert result["success"]
         assert result["primitive_count"] == 2
+
+    def test_length_constraint(self):
+        """Test length constraint on a line."""
+        sketch = SketchDocument(name="LengthTest")
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(100, 0)
+        ))
+        sketch.add_constraint(Length(line_id, 75.0))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json, Line
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+line = lines[0]
+length = math.sqrt((line.end.x - line.start.x)**2 + (line.end.y - line.start.y)**2)
+
+result = {{
+    "success": True,
+    "length": length
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["length"] - 75.0) < 0.1, f"Expected length 75, got {result['length']}"
+
+    def test_collinear_constraint(self):
+        """Test collinear constraint between two lines."""
+        sketch = SketchDocument(name="CollinearTest")
+        l1 = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(50, 10)
+        ))
+        l2 = sketch.add_primitive(Line(
+            start=Point2D(60, 15),
+            end=Point2D(100, 25)
+        ))
+        sketch.add_constraint(Collinear(l1, l2))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json, Line
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+l1, l2 = lines[0], lines[1]
+
+# Check if lines are collinear by verifying all 4 points lie on same line
+# Using cross product to check if points are collinear
+def cross(p1, p2, p3):
+    return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0])
+
+p1 = (l1.start.x, l1.start.y)
+p2 = (l1.end.x, l1.end.y)
+p3 = (l2.start.x, l2.start.y)
+p4 = (l2.end.x, l2.end.y)
+
+# All cross products should be near zero if collinear
+c1 = abs(cross(p1, p2, p3))
+c2 = abs(cross(p1, p2, p4))
+
+is_collinear = c1 < 1.0 and c2 < 1.0
+
+result = {{
+    "success": True,
+    "is_collinear": is_collinear,
+    "cross1": c1,
+    "cross2": c2
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["is_collinear"], \
+            f"Lines should be collinear, cross products: {result['cross1']}, {result['cross2']}"
+
+    def test_midpoint_constraint(self):
+        """Test midpoint constraint (point at midpoint of line)."""
+        sketch = SketchDocument(name="MidpointTest")
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(100, 0)
+        ))
+        point_id = sketch.add_primitive(Point(
+            position=Point2D(40, 10)  # Not at midpoint initially
+        ))
+        sketch.add_constraint(MidpointConstraint(
+            PointRef(point_id, PointType.CENTER),
+            line_id
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line, Point
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+
+line = lines[0]
+point = points[0]
+
+# Calculate expected midpoint
+mid_x = (line.start.x + line.end.x) / 2
+mid_y = (line.start.y + line.end.y) / 2
+
+# Check if point is at midpoint
+at_midpoint = abs(point.position.x - mid_x) < 0.1 and abs(point.position.y - mid_y) < 0.1
+
+result = {{
+    "success": True,
+    "at_midpoint": at_midpoint,
+    "point_x": point.position.x,
+    "point_y": point.position.y,
+    "expected_mid_x": mid_x,
+    "expected_mid_y": mid_y
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["at_midpoint"], \
+            f"Point should be at midpoint ({result['expected_mid_x']}, {result['expected_mid_y']}), " \
+            f"but was at ({result['point_x']}, {result['point_y']})"
+
+    def test_constraint_export_length(self):
+        """Test that length constraint produces correct line length."""
+        sketch = SketchDocument(name="ConstraintExportLengthTest")
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(10, 10),
+            end=Point2D(50, 10)
+        ))
+        sketch.add_constraint(Length(line_id, 75.0))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json, Line
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = list(exported.primitives.values())[0]
+actual_length = math.sqrt(
+    (line.end.x - line.start.x)**2 + (line.end.y - line.start.y)**2
+)
+
+result = {{
+    "success": True,
+    "actual_length": actual_length
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["actual_length"] - 75.0) < 0.1, \
+            f"Line length should be 75, got {result['actual_length']}"
+
+    def test_multiple_constraints_horizontal_length(self):
+        """Test horizontal + length constraints on same line."""
+        sketch = SketchDocument(name="MultiConstraintHLTest")
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(0, 30),
+            end=Point2D(40, 35)
+        ))
+        sketch.add_constraint(Horizontal(line_id))
+        sketch.add_constraint(Length(line_id, 60.0))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = list(exported.primitives.values())[0]
+is_horizontal = abs(line.start.y - line.end.y) < 0.01
+actual_length = abs(line.end.x - line.start.x)
+
+result = {{
+    "success": True,
+    "is_horizontal": is_horizontal,
+    "actual_length": actual_length
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["is_horizontal"], "Line should be horizontal"
+        assert abs(result["actual_length"] - 60.0) < 0.1, \
+            f"Line length should be 60, got {result['actual_length']}"
+
+    def test_multiple_constraints_vertical_length(self):
+        """Test vertical + length constraints on same line."""
+        sketch = SketchDocument(name="MultiConstraintVLTest")
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(25, 10),
+            end=Point2D(30, 50)
+        ))
+        sketch.add_constraint(Vertical(line_id))
+        sketch.add_constraint(Length(line_id, 80.0))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = list(exported.primitives.values())[0]
+is_vertical = abs(line.start.x - line.end.x) < 0.01
+actual_length = abs(line.end.y - line.start.y)
+
+result = {{
+    "success": True,
+    "is_vertical": is_vertical,
+    "actual_length": actual_length
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["is_vertical"], "Line should be vertical"
+        assert abs(result["actual_length"] - 80.0) < 0.1, \
+            f"Line length should be 80, got {result['actual_length']}"
+
+    def test_length_precision(self):
+        """Test dimensional constraint with high precision value."""
+        sketch = SketchDocument(name="LengthPrecisionTest")
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(50, 0)
+        ))
+        precise_length = 47.123456
+        sketch.add_constraint(Length(line_id, precise_length))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = list(exported.primitives.values())[0]
+actual_length = abs(line.end.x - line.start.x)
+
+result = {{
+    "success": True,
+    "actual_length": actual_length
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["actual_length"] - precise_length) < 0.001, \
+            f"Length should be {precise_length}, got {result['actual_length']}"
 
 
 if __name__ == "__main__":

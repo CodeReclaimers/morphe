@@ -24,6 +24,7 @@ class VertexMap:
     # Line vertex indices
     LINE_START = 1
     LINE_END = 2
+    LINE_MIDPOINT = 3  # FreeCAD uses 3 for midpoint of lines
 
     # Arc vertex indices
     ARC_START = 1

@@ -76,6 +76,9 @@ class FreeCADAdapter(SketchBackendAdapter):
         ConstraintType.ANGLE: 'Angle',
         ConstraintType.SYMMETRIC: 'Symmetric',
         ConstraintType.CONCENTRIC: 'Coincident',  # Concentric uses Coincident on centers
+        ConstraintType.LENGTH: 'Distance',  # Length uses Distance on line endpoints
+        ConstraintType.COLLINEAR: 'Tangent',  # Collinear uses Tangent on lines
+        ConstraintType.MIDPOINT: 'Symmetric',  # Midpoint uses Symmetric with line endpoints
     }
 
     def __init__(self, document: Any | None = None):
@@ -383,6 +386,12 @@ class FreeCADAdapter(SketchBackendAdapter):
                     self._add_angle(sketch, constraint)
                 case ConstraintType.SYMMETRIC:
                     self._add_symmetric(sketch, constraint)
+                case ConstraintType.LENGTH:
+                    self._add_length(sketch, constraint)
+                case ConstraintType.COLLINEAR:
+                    self._add_collinear(sketch, constraint)
+                case ConstraintType.MIDPOINT:
+                    self._add_midpoint(sketch, constraint)
                 case _:
                     raise ConstraintError(
                         f"Unsupported constraint type: {constraint.constraint_type}"
@@ -606,6 +615,72 @@ class FreeCADAdapter(SketchBackendAdapter):
                 'Symmetric', idx1, idx2, axis_idx
             ))
 
+    def _add_length(self, sketch: Any, constraint: SketchConstraint) -> None:
+        """Add a length constraint to a line.
+
+        FreeCAD implements line length as Distance constraint between
+        the line's start point (vertex 1) and end point (vertex 2).
+        """
+        if constraint.value is None:
+            raise ConstraintError("Length constraint requires a value")
+        idx = self._get_element_index(constraint.references[0])
+        # Distance from start (vertex 1) to end (vertex 2) of the same line
+        sketch.addConstraint(Sketcher.Constraint(
+            'Distance', idx, VertexMap.LINE_START, idx, VertexMap.LINE_END, constraint.value
+        ))
+
+    def _add_collinear(self, sketch: Any, constraint: SketchConstraint) -> None:
+        """Add a collinear constraint between lines.
+
+        FreeCAD implements collinear as Tangent constraint on lines.
+        When Tangent is applied to two lines (not curves), they become collinear.
+        """
+        if len(constraint.references) < 2:
+            raise ConstraintError("Collinear constraint requires at least 2 references")
+
+        # Apply collinear constraint pairwise
+        first_idx = self._get_element_index(constraint.references[0])
+        for i in range(1, len(constraint.references)):
+            next_idx = self._get_element_index(constraint.references[i])
+            sketch.addConstraint(Sketcher.Constraint('Tangent', first_idx, next_idx))
+
+    def _add_midpoint(self, sketch: Any, constraint: SketchConstraint) -> None:
+        """Add a midpoint constraint (point at midpoint of line).
+
+        FreeCAD doesn't have a native midpoint constraint. We use the Symmetric
+        constraint which makes the target point equidistant from the line's
+        start and end points, effectively placing it at the midpoint.
+        """
+        if len(constraint.references) != 2:
+            raise ConstraintError("Midpoint constraint requires exactly 2 references")
+
+        ref0 = constraint.references[0]
+        ref1 = constraint.references[1]
+
+        # Determine which reference is the point and which is the line
+        if isinstance(ref0, PointRef):
+            point_ref = ref0
+            line_id = ref1
+        elif isinstance(ref1, PointRef):
+            point_ref = ref1
+            line_id = ref0
+        else:
+            raise ConstraintError(
+                "Midpoint constraint requires one PointRef and one line reference"
+            )
+
+        pt = self._point_ref_to_freecad(point_ref)
+        line_idx = self._get_element_index(line_id)
+
+        # Use Symmetric constraint: makes the point equidistant from line's endpoints
+        # Symmetric(line_start, line_end, symmetry_point)
+        sketch.addConstraint(Sketcher.Constraint(
+            'Symmetric',
+            line_idx, VertexMap.LINE_START,  # First point (line start)
+            line_idx, VertexMap.LINE_END,    # Second point (line end)
+            pt[0], pt[1]                      # Point that will be at midpoint
+        ))
+
     def get_solver_status(self) -> tuple[SolverStatus, int]:
         """Get the constraint solver status."""
         sketch = self._get_active_sketch()
@@ -764,11 +839,54 @@ class FreeCADAdapter(SketchBackendAdapter):
 
         return None
 
-    def _fc_constraint_to_canonical(self, fc_constraint: Any) -> SketchConstraint | None:
-        """Convert FreeCAD constraint to canonical form."""
-        fc_type = fc_constraint.Type
+    def _detect_constraint_type(
+        self, fc_constraint: Any, fc_type: str, sketch: Any
+    ) -> ConstraintType | None:
+        """Detect the canonical constraint type from a FreeCAD constraint.
 
-        # Map FreeCAD constraint type to canonical
+        Some FreeCAD constraint types map to different canonical types depending
+        on context (e.g., Distance can be LENGTH when applied to a single line).
+        """
+        first = fc_constraint.First
+        second = getattr(fc_constraint, 'Second', -1)
+        first_pos = getattr(fc_constraint, 'FirstPos', 0)
+        second_pos = getattr(fc_constraint, 'SecondPos', 0)
+
+        # Distance constraint on same element with start/end → LENGTH
+        if fc_type == 'Distance' and first == second and first >= 0:
+            if first_pos == VertexMap.LINE_START and second_pos == VertexMap.LINE_END:
+                return ConstraintType.LENGTH
+
+        # Tangent on two lines → COLLINEAR
+        if fc_type == 'Tangent' and first >= 0 and second >= 0:
+            if first < len(sketch.Geometry) and second < len(sketch.Geometry):
+                geo1 = sketch.Geometry[first]
+                geo2 = sketch.Geometry[second]
+                if 'Line' in type(geo1).__name__ and 'Line' in type(geo2).__name__:
+                    return ConstraintType.COLLINEAR
+
+        # Symmetric constraint where First==Second (same line) with start/end → MIDPOINT
+        if fc_type == 'Symmetric':
+            if (first == second and first >= 0 and
+                    first_pos == VertexMap.LINE_START and
+                    second_pos == VertexMap.LINE_END):
+                # This is a midpoint constraint (point symmetric about line endpoints)
+                if first < len(sketch.Geometry):
+                    if 'Line' in type(sketch.Geometry[first]).__name__:
+                        return ConstraintType.MIDPOINT
+
+        # Check for concentric (both positions are center = 3 on arcs/circles)
+        if fc_type == 'Coincident':
+            if first >= 0 and second >= 0:
+                if first_pos == VertexMap.CIRCLE_CENTER and second_pos == VertexMap.CIRCLE_CENTER:
+                    if first < len(sketch.Geometry) and second < len(sketch.Geometry):
+                        geo1_name = type(sketch.Geometry[first]).__name__
+                        geo2_name = type(sketch.Geometry[second]).__name__
+                        if (('Arc' in geo1_name or 'Circle' in geo1_name) and
+                                ('Arc' in geo2_name or 'Circle' in geo2_name)):
+                            return ConstraintType.CONCENTRIC
+
+        # Standard type map for other cases
         type_map = {
             'Coincident': ConstraintType.COINCIDENT,
             'Tangent': ConstraintType.TANGENT,
@@ -778,6 +896,7 @@ class FreeCADAdapter(SketchBackendAdapter):
             'Horizontal': ConstraintType.HORIZONTAL,
             'Vertical': ConstraintType.VERTICAL,
             'Fixed': ConstraintType.FIXED,
+            'Block': ConstraintType.FIXED,
             'Distance': ConstraintType.DISTANCE,
             'DistanceX': ConstraintType.DISTANCE_X,
             'DistanceY': ConstraintType.DISTANCE_Y,
@@ -787,7 +906,15 @@ class FreeCADAdapter(SketchBackendAdapter):
             'Symmetric': ConstraintType.SYMMETRIC,
         }
 
-        constraint_type = type_map.get(fc_type)
+        return type_map.get(fc_type)
+
+    def _fc_constraint_to_canonical(self, fc_constraint: Any) -> SketchConstraint | None:
+        """Convert FreeCAD constraint to canonical form."""
+        fc_type = fc_constraint.Type
+        sketch = self._get_active_sketch()
+
+        # Detect special constraint types based on context
+        constraint_type = self._detect_constraint_type(fc_constraint, fc_type, sketch)
         if constraint_type is None:
             return None
 
@@ -896,6 +1023,35 @@ class FreeCADAdapter(SketchBackendAdapter):
             axis_id = idx_to_id(third)
             if ref1 and ref2 and axis_id:
                 return [ref1, ref2, axis_id]
+
+        # Length constraint (Distance on same line's endpoints)
+        elif constraint_type == ConstraintType.LENGTH:
+            id1 = idx_to_id(first)
+            if id1:
+                return [id1]
+
+        # Collinear constraint (Tangent on lines)
+        elif constraint_type == ConstraintType.COLLINEAR:
+            id1 = idx_to_id(first)
+            id2 = idx_to_id(second)
+            if id1 and id2:
+                return [id1, id2]
+
+        # Midpoint constraint (stored as Symmetric with line endpoints and point)
+        elif constraint_type == ConstraintType.MIDPOINT:
+            # Symmetric format: First=line, FirstPos=1, Second=line, SecondPos=2, Third=point
+            third_pos = getattr(fc_constraint, 'ThirdPos', 0)
+            line_id = idx_to_id(first)  # First and Second are the same line
+            point_ref = idx_to_point_ref(third, third_pos)
+            if line_id and point_ref:
+                return [point_ref, line_id]
+
+        # Concentric constraint (Coincident on arc/circle centers)
+        elif constraint_type == ConstraintType.CONCENTRIC:
+            id1 = idx_to_id(first)
+            id2 = idx_to_id(second)
+            if id1 and id2:
+                return [id1, id2]
 
         return None
 

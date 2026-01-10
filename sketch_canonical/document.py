@@ -2,11 +2,10 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
-from .types import Point2D, PointRef, PointType, ElementPrefix
-from .primitives import SketchPrimitive, Line, Arc, Circle, Point, Spline
 from .constraints import SketchConstraint
+from .primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
+from .types import ElementPrefix, Point2D, PointRef, PointType
 
 
 class SolverStatus(Enum):
@@ -132,7 +131,7 @@ class SketchDocument:
         self.solver_status = SolverStatus.DIRTY
         return True
 
-    def get_primitive(self, element_id: str) -> Optional[SketchPrimitive]:
+    def get_primitive(self, element_id: str) -> SketchPrimitive | None:
         """Get a primitive by its ID."""
         return self.primitives.get(element_id)
 
@@ -173,7 +172,7 @@ class SketchDocument:
                 return True
         return False
 
-    def get_constraint(self, constraint_id: str) -> Optional[SketchConstraint]:
+    def get_constraint(self, constraint_id: str) -> SketchConstraint | None:
         """Get a constraint by its ID."""
         for c in self.constraints:
             if c.id == constraint_id:

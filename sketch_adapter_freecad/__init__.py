@@ -16,7 +16,7 @@ Note: This adapter requires FreeCAD to be installed and importable.
 When FreeCAD is not available, a MockFreeCADAdapter is provided for testing.
 """
 
-from .adapter import FreeCADAdapter, FREECAD_AVAILABLE
+from .adapter import FREECAD_AVAILABLE, FreeCADAdapter
 from .vertex_map import VertexMap, get_vertex_index
 
 __all__ = [

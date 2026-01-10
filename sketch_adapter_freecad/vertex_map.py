@@ -11,9 +11,8 @@ The origin point uses geometry index -1, vertex 1.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
-from sketch_canonical import PointType, Line, Arc, Circle, Point, Spline
+from sketch_canonical import Arc, Circle, Line, Point, PointType, Spline
 
 
 @dataclass
@@ -49,7 +48,7 @@ class VertexMap:
     EXTERNAL_GEO_BASE = -2
 
 
-def get_vertex_index(primitive_type: type, point_type: PointType) -> Optional[int]:
+def get_vertex_index(primitive_type: type, point_type: PointType) -> int | None:
     """
     Get the FreeCAD vertex index for a point type on a primitive.
 
@@ -90,7 +89,7 @@ def get_vertex_index(primitive_type: type, point_type: PointType) -> Optional[in
     return mapping.get(point_type)
 
 
-def get_point_type_from_vertex(primitive_type: type, vertex_index: int) -> Optional[PointType]:
+def get_point_type_from_vertex(primitive_type: type, vertex_index: int) -> PointType | None:
     """
     Get the canonical point type from a FreeCAD vertex index.
 

@@ -18,10 +18,10 @@ and display results in a message box and text command palette.
 import math
 import sys
 import traceback
-from pathlib import Path
-from typing import List, Tuple, Callable, Any, Optional
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 # Add the project root to path for imports
 # Adjust this path based on where you've installed the canonical_sketch package
@@ -33,38 +33,33 @@ if str(PROJECT_ROOT) not in sys.path:
 import adsk.core
 import adsk.fusion
 
+from sketch_adapter_fusion import FusionAdapter
+
 # Import canonical sketch modules
 from sketch_canonical import (
-    SketchDocument,
-    Point2D,
-    PointType,
-    PointRef,
-    Line,
     Arc,
     Circle,
+    Line,
     Point,
+    Point2D,
+    PointRef,
+    PointType,
+    SketchDocument,
     Spline,
-    SolverStatus,
 )
 from sketch_canonical.constraints import (
+    Angle,
     Coincident,
-    Tangent,
-    Perpendicular,
-    Parallel,
-    Horizontal,
-    Vertical,
-    Fixed,
-    Distance,
-    Radius,
+    Concentric,
     Diameter,
     Equal,
-    Concentric,
+    Horizontal,
     Length,
-    Angle,
+    Parallel,
+    Perpendicular,
+    Radius,
+    Vertical,
 )
-from sketch_canonical.serialization import sketch_to_json, sketch_from_json
-
-from sketch_adapter_fusion import FusionAdapter
 
 
 class TestStatus(Enum):
@@ -90,7 +85,7 @@ class FusionTestRunner:
     def __init__(self):
         self.app = adsk.core.Application.get()
         self.ui = self.app.userInterface
-        self.results: List[TestResult] = []
+        self.results: list[TestResult] = []
         self._test_doc = None
         self._adapter = None
 
@@ -130,7 +125,7 @@ class FusionTestRunner:
             tb = traceback.format_exc()
             return TestResult(name, TestStatus.ERROR, f"{e}\n{tb}", duration)
 
-    def run_all_tests(self) -> List[TestResult]:
+    def run_all_tests(self) -> list[TestResult]:
         """Run all registered tests."""
         self.results = []
 
@@ -754,7 +749,7 @@ def run(context):
         runner.run_all_tests()
         runner.report_results()
 
-    except Exception as e:
+    except Exception:
         if ui:
             ui.messageBox(f"Test run failed:\n{traceback.format_exc()}")
 

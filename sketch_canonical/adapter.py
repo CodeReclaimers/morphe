@@ -1,11 +1,11 @@
 """Abstract adapter interface for CAD platform backends."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Tuple
+from typing import Any
 
+from .constraints import SketchConstraint
 from .document import SketchDocument, SolverStatus
 from .primitives import SketchPrimitive
-from .constraints import SketchConstraint
 
 
 class SketchBackendAdapter(ABC):
@@ -24,7 +24,7 @@ class SketchBackendAdapter(ABC):
     """
 
     @abstractmethod
-    def create_sketch(self, name: str, plane: Optional[Any] = None) -> None:
+    def create_sketch(self, name: str, plane: Any | None = None) -> None:
         """
         Create a new empty sketch.
 
@@ -87,7 +87,7 @@ class SketchBackendAdapter(ABC):
         pass
 
     @abstractmethod
-    def get_solver_status(self) -> Tuple[SolverStatus, int]:
+    def get_solver_status(self) -> tuple[SolverStatus, int]:
         """
         Get the current solver status.
 
@@ -120,7 +120,7 @@ class SketchBackendAdapter(ABC):
         """
         pass
 
-    def get_element_by_id(self, element_id: str) -> Optional[Any]:
+    def get_element_by_id(self, element_id: str) -> Any | None:
         """
         Get the platform-specific entity for a canonical element ID.
 

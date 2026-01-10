@@ -1,31 +1,57 @@
 """Tests for the adapter interface and FreeCAD adapter."""
 
-import pytest
 import math
-from unittest.mock import Mock, MagicMock, patch
-from typing import Any, Optional, Tuple
+from typing import Any
+from unittest.mock import MagicMock, Mock, patch
 
-from sketch_canonical import (
-    # Types
-    Point2D, PointType, PointRef,
-    # Primitives
-    SketchPrimitive, Line, Arc, Circle, Point, Spline,
-    # Constraints
-    ConstraintType, SketchConstraint,
-    Coincident, Tangent, Perpendicular, Parallel, Horizontal, Vertical,
-    Fixed, Distance, DistanceX, DistanceY, Radius, Diameter, Angle, Symmetric,
-    # Document
-    SketchDocument, SolverStatus,
-    # Adapter interface
-    SketchBackendAdapter,
-    AdapterError, SketchCreationError, GeometryError, ConstraintError, ExportError,
-)
+import pytest
 
 # Import vertex_map module (doesn't require FreeCAD)
 from sketch_adapter_freecad.vertex_map import (
-    VertexMap, get_vertex_index, get_point_type_from_vertex
+    VertexMap,
+    get_point_type_from_vertex,
+    get_vertex_index,
 )
-
+from sketch_canonical import (
+    AdapterError,
+    Angle,
+    Arc,
+    Circle,
+    Coincident,
+    ConstraintError,
+    # Constraints
+    ConstraintType,
+    Diameter,
+    Distance,
+    DistanceX,
+    DistanceY,
+    ExportError,
+    Fixed,
+    GeometryError,
+    Horizontal,
+    Line,
+    Parallel,
+    Perpendicular,
+    Point,
+    # Types
+    Point2D,
+    PointRef,
+    PointType,
+    Radius,
+    # Adapter interface
+    SketchBackendAdapter,
+    SketchConstraint,
+    SketchCreationError,
+    # Document
+    SketchDocument,
+    # Primitives
+    SketchPrimitive,
+    SolverStatus,
+    Spline,
+    Symmetric,
+    Tangent,
+    Vertical,
+)
 
 # =============================================================================
 # Adapter Interface Tests
@@ -39,7 +65,7 @@ class ConcreteAdapter(SketchBackendAdapter):
         self._primitives = []
         self._constraints = []
 
-    def create_sketch(self, name: str, plane: Optional[Any] = None) -> None:
+    def create_sketch(self, name: str, plane: Any | None = None) -> None:
         self._sketch_created = True
         self._name = name
 
@@ -61,7 +87,7 @@ class ConcreteAdapter(SketchBackendAdapter):
         self._constraints.append(constraint)
         return True
 
-    def get_solver_status(self) -> Tuple[SolverStatus, int]:
+    def get_solver_status(self) -> tuple[SolverStatus, int]:
         return (SolverStatus.FULLY_CONSTRAINED, 0)
 
     def capture_image(self, width: int, height: int) -> bytes:

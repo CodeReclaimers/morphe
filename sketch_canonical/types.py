@@ -1,9 +1,8 @@
 """Core data types for the canonical sketch schema."""
 
+import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
-import math
 
 
 @dataclass(frozen=True)
@@ -130,8 +129,8 @@ class PointRef:
     """
     element_id: str
     point_type: PointType
-    parameter: Optional[float] = None  # For ON_CURVE type
-    index: Optional[int] = None        # For CONTROL type
+    parameter: float | None = None  # For ON_CURVE type
+    index: int | None = None        # For CONTROL type
 
     def __str__(self) -> str:
         if self.point_type == PointType.CONTROL:

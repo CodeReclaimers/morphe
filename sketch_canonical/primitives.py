@@ -1,11 +1,10 @@
 """Geometry primitives for the canonical sketch schema."""
 
-from dataclasses import dataclass, field
-from typing import Optional
-from abc import ABC, abstractmethod
 import math
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 
-from .types import Point2D, Vector2D, PointType
+from .types import Point2D, PointType, Vector2D
 
 
 @dataclass
@@ -15,7 +14,7 @@ class SketchPrimitive(ABC):
     construction: bool = False               # True = reference geometry only
 
     # Metadata for reconstruction workflow
-    source: Optional[str] = None             # Origin: "fitted", "user", "inferred"
+    source: str | None = None             # Origin: "fitted", "user", "inferred"
     confidence: float = 1.0                  # Fitting confidence (0-1)
 
     @abstractmethod
@@ -237,7 +236,7 @@ class Spline(SketchPrimitive):
     degree: int = 3
     control_points: list[Point2D] = field(default_factory=list)
     knots: list[float] = field(default_factory=list)
-    weights: Optional[list[float]] = None  # None = non-rational (uniform weights)
+    weights: list[float] | None = None  # None = non-rational (uniform weights)
     periodic: bool = False
     is_fit_spline: bool = False  # True = control_points are fit points
 

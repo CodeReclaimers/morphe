@@ -8,7 +8,7 @@ uses millimeters. This adapter handles the conversion automatically.
 """
 
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from sketch_canonical.adapter import (
     AdapterError,
@@ -21,9 +21,9 @@ from sketch_canonical.adapter import (
 from sketch_canonical.constraints import ConstraintType, SketchConstraint
 from sketch_canonical.document import SketchDocument, SolverStatus
 from sketch_canonical.primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
-from sketch_canonical.types import ElementPrefix, PointRef, PointType
+from sketch_canonical.types import PointRef, PointType
 
-from .vertex_map import VertexMap, get_point_from_sketch_entity
+from .vertex_map import VertexMap
 
 # Fusion 360 uses centimeters internally, canonical format uses millimeters
 MM_TO_CM = 0.1
@@ -82,8 +82,8 @@ class FusionAdapter(SketchBackendAdapter):
             raise AdapterError("No active Fusion 360 design")
 
         self._sketch = None
-        self._id_to_entity: Dict[str, Any] = {}
-        self._entity_to_id: Dict[Any, str] = {}
+        self._id_to_entity: dict[str, Any] = {}
+        self._entity_to_id: dict[Any, str] = {}
 
     def create_sketch(self, name: str, plane=None) -> None:
         """Create a new sketch in Fusion 360.
@@ -852,7 +852,7 @@ class FusionAdapter(SketchBackendAdapter):
 
         return True
 
-    def get_solver_status(self) -> Tuple[SolverStatus, int]:
+    def get_solver_status(self) -> tuple[SolverStatus, int]:
         """Get the current solver status and degrees of freedom.
 
         Returns:
@@ -894,8 +894,8 @@ class FusionAdapter(SketchBackendAdapter):
             raise AdapterError("No active sketch")
 
         try:
-            import tempfile
             import os
+            import tempfile
 
             # Activate the sketch for viewing
             self._sketch.isVisible = True
@@ -934,7 +934,7 @@ class FusionAdapter(SketchBackendAdapter):
             except Exception:
                 pass
 
-    def get_element_by_id(self, element_id: str) -> Optional[Any]:
+    def get_element_by_id(self, element_id: str) -> Any | None:
         """Get a Fusion 360 entity by its canonical ID.
 
         Args:
@@ -1161,7 +1161,7 @@ class FusionAdapter(SketchBackendAdapter):
             if canonical:
                 doc.add_constraint(canonical)
 
-    def _convert_geometric_constraint(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_geometric_constraint(self, constraint) -> SketchConstraint | None:
         """Convert a Fusion geometric constraint to canonical form."""
         obj_type = constraint.objectType
 
@@ -1196,12 +1196,12 @@ class FusionAdapter(SketchBackendAdapter):
         except Exception:
             return None
 
-    def _get_id_for_entity(self, entity) -> Optional[str]:
+    def _get_id_for_entity(self, entity) -> str | None:
         """Get the canonical ID for a Fusion entity."""
         token = entity.entityToken
         return self._entity_to_id.get(token)
 
-    def _convert_coincident(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_coincident(self, constraint) -> SketchConstraint | None:
         """Convert a coincident constraint."""
         # Get the two points involved
         pt1 = constraint.point
@@ -1221,7 +1221,7 @@ class FusionAdapter(SketchBackendAdapter):
                 )
         return None
 
-    def _get_id_for_entity_or_parent(self, entity) -> Optional[str]:
+    def _get_id_for_entity_or_parent(self, entity) -> str | None:
         """Get ID for an entity, checking parent curve if it's a sketch point."""
         # First check if this entity has a direct mapping
         if hasattr(entity, "entityToken"):
@@ -1270,7 +1270,7 @@ class FusionAdapter(SketchBackendAdapter):
 
         return PointRef(element_id, PointType.CENTER)
 
-    def _convert_horizontal(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_horizontal(self, constraint) -> SketchConstraint | None:
         """Convert a horizontal constraint."""
         entity = constraint.line
         entity_id = self._get_id_for_entity(entity)
@@ -1281,7 +1281,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_vertical(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_vertical(self, constraint) -> SketchConstraint | None:
         """Convert a vertical constraint."""
         entity = constraint.line
         entity_id = self._get_id_for_entity(entity)
@@ -1292,7 +1292,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_parallel(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_parallel(self, constraint) -> SketchConstraint | None:
         """Convert a parallel constraint."""
         line1 = constraint.lineOne
         line2 = constraint.lineTwo
@@ -1305,7 +1305,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_perpendicular(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_perpendicular(self, constraint) -> SketchConstraint | None:
         """Convert a perpendicular constraint."""
         line1 = constraint.lineOne
         line2 = constraint.lineTwo
@@ -1318,7 +1318,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_tangent(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_tangent(self, constraint) -> SketchConstraint | None:
         """Convert a tangent constraint."""
         curve1 = constraint.curveOne
         curve2 = constraint.curveTwo
@@ -1331,7 +1331,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_equal(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_equal(self, constraint) -> SketchConstraint | None:
         """Convert an equal constraint."""
         curve1 = constraint.curveOne
         curve2 = constraint.curveTwo
@@ -1344,7 +1344,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_concentric(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_concentric(self, constraint) -> SketchConstraint | None:
         """Convert a concentric constraint."""
         entity1 = constraint.entityOne
         entity2 = constraint.entityTwo
@@ -1357,7 +1357,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_collinear(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_collinear(self, constraint) -> SketchConstraint | None:
         """Convert a collinear constraint."""
         line1 = constraint.lineOne
         line2 = constraint.lineTwo
@@ -1370,7 +1370,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_fixed(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_fixed(self, constraint) -> SketchConstraint | None:
         """Convert a fixed constraint."""
         entity = constraint.entity
         entity_id = self._get_id_for_entity(entity)
@@ -1381,7 +1381,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_symmetric(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_symmetric(self, constraint) -> SketchConstraint | None:
         """Convert a symmetry constraint."""
         entity1 = constraint.entityOne
         entity2 = constraint.entityTwo
@@ -1396,7 +1396,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_midpoint(self, constraint) -> Optional[SketchConstraint]:
+    def _convert_midpoint(self, constraint) -> SketchConstraint | None:
         """Convert a midpoint constraint."""
         point = constraint.point
         line = constraint.midPointCurve
@@ -1420,7 +1420,7 @@ class FusionAdapter(SketchBackendAdapter):
             if canonical:
                 doc.add_constraint(canonical)
 
-    def _convert_dimensional_constraint(self, dim) -> Optional[SketchConstraint]:
+    def _convert_dimensional_constraint(self, dim) -> SketchConstraint | None:
         """Convert a Fusion dimensional constraint to canonical form."""
         obj_type = dim.objectType
 
@@ -1442,7 +1442,7 @@ class FusionAdapter(SketchBackendAdapter):
         except Exception:
             return None
 
-    def _convert_linear_dimension(self, dim, value: float) -> Optional[SketchConstraint]:
+    def _convert_linear_dimension(self, dim, value: float) -> SketchConstraint | None:
         """Convert a linear dimension constraint."""
         # Determine if it's distance, length, or offset dimension
         orientation = dim.orientation
@@ -1489,7 +1489,7 @@ class FusionAdapter(SketchBackendAdapter):
 
         return None
 
-    def _convert_radial_dimension(self, dim, value: float) -> Optional[SketchConstraint]:
+    def _convert_radial_dimension(self, dim, value: float) -> SketchConstraint | None:
         """Convert a radial dimension constraint."""
         entity = dim.entity
         entity_id = self._get_id_for_entity(entity)
@@ -1501,7 +1501,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_diameter_dimension(self, dim, value: float) -> Optional[SketchConstraint]:
+    def _convert_diameter_dimension(self, dim, value: float) -> SketchConstraint | None:
         """Convert a diameter dimension constraint."""
         entity = dim.entity
         entity_id = self._get_id_for_entity(entity)
@@ -1513,7 +1513,7 @@ class FusionAdapter(SketchBackendAdapter):
             )
         return None
 
-    def _convert_angular_dimension(self, dim) -> Optional[SketchConstraint]:
+    def _convert_angular_dimension(self, dim) -> SketchConstraint | None:
         """Convert an angular dimension constraint."""
         # Value is in radians, convert to degrees
         value_rad = dim.parameter.value

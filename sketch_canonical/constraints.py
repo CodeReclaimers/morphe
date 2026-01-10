@@ -1,11 +1,10 @@
 """Constraint types and data structures for the canonical sketch schema."""
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Union
 import uuid
+from dataclasses import dataclass
+from enum import Enum
 
-from .types import PointRef, PointType
+from .types import PointRef
 
 
 class ConstraintType(Enum):
@@ -191,16 +190,16 @@ class SketchConstraint:
     """
     id: str                                          # Unique constraint ID
     constraint_type: ConstraintType
-    references: list[Union[str, PointRef]]           # Element IDs or PointRefs
-    value: Optional[float] = None                    # For dimensional constraints (mm or degrees)
+    references: list[str | PointRef]           # Element IDs or PointRefs
+    value: float | None = None                    # For dimensional constraints (mm or degrees)
 
     # Connection hints for curve-to-curve constraints
-    connection_point: Optional[PointRef] = None      # Where tangent/perpendicular occurs
+    connection_point: PointRef | None = None      # Where tangent/perpendicular occurs
 
     # Metadata
     inferred: bool = False                           # True if AI/algorithm suggested
     confidence: float = 1.0                          # Confidence for inferred constraints
-    source: Optional[str] = None                     # Origin: "user", "ai", "detected"
+    source: str | None = None                     # Origin: "user", "ai", "detected"
 
     # Status (populated after solving)
     status: ConstraintStatus = ConstraintStatus.UNKNOWN
@@ -240,7 +239,7 @@ def Coincident(pt1: PointRef, pt2: PointRef, **kwargs) -> SketchConstraint:
     )
 
 
-def Tangent(elem1: str, elem2: str, at: Optional[PointRef] = None, **kwargs) -> SketchConstraint:
+def Tangent(elem1: str, elem2: str, at: PointRef | None = None, **kwargs) -> SketchConstraint:
     """Create a tangent constraint between two curves."""
     return SketchConstraint(
         id=kwargs.pop('id', _generate_id()),
@@ -346,7 +345,7 @@ def Distance(pt1: PointRef, pt2: PointRef, value: float, **kwargs) -> SketchCons
     )
 
 
-def DistanceX(pt: PointRef, value: float, pt2: Optional[PointRef] = None, **kwargs) -> SketchConstraint:
+def DistanceX(pt: PointRef, value: float, pt2: PointRef | None = None, **kwargs) -> SketchConstraint:
     """Create a horizontal distance constraint."""
     refs = [pt] if pt2 is None else [pt, pt2]
     return SketchConstraint(
@@ -358,7 +357,7 @@ def DistanceX(pt: PointRef, value: float, pt2: Optional[PointRef] = None, **kwar
     )
 
 
-def DistanceY(pt: PointRef, value: float, pt2: Optional[PointRef] = None, **kwargs) -> SketchConstraint:
+def DistanceY(pt: PointRef, value: float, pt2: PointRef | None = None, **kwargs) -> SketchConstraint:
     """Create a vertical distance constraint."""
     refs = [pt] if pt2 is None else [pt, pt2]
     return SketchConstraint(
@@ -414,7 +413,7 @@ def Angle(elem1: str, elem2: str, value: float, **kwargs) -> SketchConstraint:
     )
 
 
-def Symmetric(elem1: Union[str, PointRef], elem2: Union[str, PointRef],
+def Symmetric(elem1: str | PointRef, elem2: str | PointRef,
               axis: str, **kwargs) -> SketchConstraint:
     """Create a symmetric constraint about a line axis."""
     return SketchConstraint(

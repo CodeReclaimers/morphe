@@ -22,6 +22,9 @@ from sketch_canonical import (
     Coincident,
     Concentric,
     Diameter,
+    Distance,
+    DistanceX,
+    DistanceY,
     Equal,
     Fixed,
     Horizontal,
@@ -35,6 +38,7 @@ from sketch_canonical import (
     Radius,
     SketchDocument,
     Spline,
+    Tangent,
     Vertical,
     sketch_to_json,
 )
@@ -1208,6 +1212,946 @@ print(json.dumps(result))
         assert result["primitive_count"] == 4
         assert result["horizontal_count"] == 2, "Should have 2 horizontal lines"
         assert result["vertical_count"] == 2, "Should have 2 vertical lines"
+
+
+class TestFreeCADRoundTripGeometryEdgeCases:
+    """Tests for geometry edge cases and coordinate variations."""
+
+    def test_diagonal_line(self):
+        """Test line at 45-degree angle."""
+        sketch = SketchDocument(name="DiagonalTest")
+        sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(100, 100)
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = list(exported.primitives.values())[0]
+dx = line.end.x - line.start.x
+dy = line.end.y - line.start.y
+
+result = {{
+    "success": True,
+    "dx": dx,
+    "dy": dy,
+    "is_45_deg": abs(dx - dy) < 0.01
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["is_45_deg"], "Line should be at 45 degrees"
+
+    def test_negative_coordinates(self):
+        """Test geometry in negative coordinate space."""
+        sketch = SketchDocument(name="NegativeTest")
+        sketch.add_primitive(Line(
+            start=Point2D(-100, -50),
+            end=Point2D(-20, -80)
+        ))
+        sketch.add_primitive(Circle(center=Point2D(-50, -50), radius=30))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = next(p for p in exported.primitives.values() if isinstance(p, Line))
+circle = next(p for p in exported.primitives.values() if isinstance(p, Circle))
+
+result = {{
+    "success": True,
+    "line_start_x": line.start.x,
+    "line_start_y": line.start.y,
+    "circle_center_x": circle.center.x,
+    "circle_center_y": circle.center.y
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["line_start_x"] - (-100)) < 0.01
+        assert abs(result["line_start_y"] - (-50)) < 0.01
+        assert abs(result["circle_center_x"] - (-50)) < 0.01
+        assert abs(result["circle_center_y"] - (-50)) < 0.01
+
+    def test_geometry_at_origin(self):
+        """Test geometry centered at origin."""
+        sketch = SketchDocument(name="OriginTest")
+        sketch.add_primitive(Circle(center=Point2D(0, 0), radius=25))
+        sketch.add_primitive(Line(start=Point2D(-50, 0), end=Point2D(50, 0)))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Circle
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+circle = next(p for p in exported.primitives.values() if isinstance(p, Circle))
+
+result = {{
+    "success": True,
+    "center_x": circle.center.x,
+    "center_y": circle.center.y,
+    "primitive_count": len(exported.primitives)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["primitive_count"] == 2
+        assert abs(result["center_x"]) < 0.01
+        assert abs(result["center_y"]) < 0.01
+
+    def test_small_geometry(self):
+        """Test very small geometry (precision test)."""
+        sketch = SketchDocument(name="SmallTest")
+        sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(0.1, 0.05)
+        ))
+        sketch.add_primitive(Circle(center=Point2D(1, 1), radius=0.05))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = next(p for p in exported.primitives.values() if isinstance(p, Line))
+circle = next(p for p in exported.primitives.values() if isinstance(p, Circle))
+
+result = {{
+    "success": True,
+    "line_end_x": line.end.x,
+    "circle_radius": circle.radius
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["line_end_x"] - 0.1) < 0.001
+        assert abs(result["circle_radius"] - 0.05) < 0.001
+
+    def test_large_geometry(self):
+        """Test large geometry (1000mm scale)."""
+        sketch = SketchDocument(name="LargeTest")
+        sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(1000, 500)
+        ))
+        sketch.add_primitive(Circle(center=Point2D(500, 500), radius=250))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = next(p for p in exported.primitives.values() if isinstance(p, Line))
+circle = next(p for p in exported.primitives.values() if isinstance(p, Circle))
+
+result = {{
+    "success": True,
+    "line_end_x": line.end.x,
+    "circle_radius": circle.radius
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["line_end_x"] - 1000) < 0.1
+        assert abs(result["circle_radius"] - 250) < 0.1
+
+    def test_arc_clockwise(self):
+        """Test round-trip of a clockwise arc."""
+        sketch = SketchDocument(name="CWArcTest")
+        sketch.add_primitive(Arc(
+            center=Point2D(0, 0),
+            start_point=Point2D(50, 0),
+            end_point=Point2D(0, 50),
+            ccw=False
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+arc = list(exported.primitives.values())[0]
+start_radius = math.sqrt(arc.start_point.x**2 + arc.start_point.y**2)
+
+result = {{
+    "success": True,
+    "start_radius": start_radius,
+    "primitive_count": len(exported.primitives)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["primitive_count"] == 1
+        assert abs(result["start_radius"] - 50) < 0.1
+
+    def test_arc_large_angle(self):
+        """Test round-trip of a large arc (> 180 degrees)."""
+        sketch = SketchDocument(name="LargeArcTest")
+        sketch.add_primitive(Arc(
+            center=Point2D(0, 0),
+            start_point=Point2D(50, 0),
+            end_point=Point2D(0, -50),
+            ccw=True
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+arc = list(exported.primitives.values())[0]
+start_radius = math.sqrt(arc.start_point.x**2 + arc.start_point.y**2)
+
+result = {{
+    "success": True,
+    "start_radius": start_radius,
+    "primitive_count": len(exported.primitives)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["start_radius"] - 50) < 0.1
+
+    def test_construction_arc(self):
+        """Test construction arc flag is preserved."""
+        sketch = SketchDocument(name="ConstructionArcTest")
+        sketch.add_primitive(Arc(
+            center=Point2D(50, 50),
+            start_point=Point2D(80, 50),
+            end_point=Point2D(50, 80),
+            ccw=True,
+            construction=True
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+arc = list(exported.primitives.values())[0]
+
+result = {{
+    "success": True,
+    "is_construction": arc.construction
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["is_construction"] is True
+
+    def test_empty_sketch(self):
+        """Test that empty sketch exports correctly."""
+        sketch = SketchDocument(name="EmptySketchTest")
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+result = {{
+    "success": True,
+    "primitive_count": len(exported.primitives)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["primitive_count"] == 0
+
+
+class TestFreeCADRoundTripConstraintsAdvanced:
+    """Advanced constraint tests including tangent, collinear, distance constraints."""
+
+    def test_tangent_line_circle(self):
+        """Test tangent constraint between line and circle."""
+        sketch = SketchDocument(name="TangentTest")
+        circle_id = sketch.add_primitive(Circle(
+            center=Point2D(50, 50),
+            radius=30
+        ))
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(0, 85),
+            end=Point2D(100, 80)
+        ))
+        sketch.add_constraint(Tangent(line_id, circle_id))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json, Circle, Line
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+circle = next(p for p in exported.primitives.values() if isinstance(p, Circle))
+line = next(p for p in exported.primitives.values() if isinstance(p, Line))
+
+# Calculate distance from circle center to line
+x1, y1 = line.start.x, line.start.y
+x2, y2 = line.end.x, line.end.y
+px, py = circle.center.x, circle.center.y
+
+line_len = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+dist = abs((y2-y1)*px - (x2-x1)*py + x2*y1 - y2*x1) / line_len if line_len > 0 else 0
+
+result = {{
+    "success": True,
+    "distance": dist,
+    "radius": circle.radius,
+    "is_tangent": abs(dist - circle.radius) < 0.5
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["is_tangent"], f"Not tangent: distance={result['distance']}, radius={result['radius']}"
+
+    def test_fixed_constraint(self):
+        """Test fixed constraint locks geometry in place."""
+        sketch = SketchDocument(name="FixedTest")
+        line_id = sketch.add_primitive(Line(
+            start=Point2D(10, 20),
+            end=Point2D(50, 60)
+        ))
+        sketch.add_constraint(Fixed(line_id))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+line = list(exported.primitives.values())[0]
+
+result = {{
+    "success": True,
+    "start_x": line.start.x,
+    "start_y": line.start.y,
+    "end_x": line.end.x,
+    "end_y": line.end.y
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["start_x"] - 10) < 0.01
+        assert abs(result["start_y"] - 20) < 0.01
+        assert abs(result["end_x"] - 50) < 0.01
+        assert abs(result["end_y"] - 60) < 0.01
+
+    def test_distance_constraint(self):
+        """Test distance constraint between two points."""
+        sketch = SketchDocument(name="DistanceTest")
+        l1 = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(50, 0)
+        ))
+        l2 = sketch.add_primitive(Line(
+            start=Point2D(60, 0),
+            end=Point2D(100, 0)
+        ))
+        sketch.add_constraint(Distance(
+            PointRef(l1, PointType.END),
+            PointRef(l2, PointType.START),
+            20
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+prims = list(exported.primitives.values())
+l1_end = prims[0].end
+l2_start = prims[1].start
+
+dist = math.sqrt((l2_start.x - l1_end.x)**2 + (l2_start.y - l1_end.y)**2)
+
+result = {{
+    "success": True,
+    "distance": dist
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["distance"] - 20) < 0.1
+
+    def test_distance_x_constraint(self):
+        """Test horizontal distance constraint."""
+        sketch = SketchDocument(name="DistanceXTest")
+        l1 = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(30, 0)
+        ))
+        l2 = sketch.add_primitive(Line(
+            start=Point2D(50, 20),
+            end=Point2D(80, 20)
+        ))
+        sketch.add_constraint(DistanceX(
+            PointRef(l1, PointType.END),
+            40,
+            PointRef(l2, PointType.START)
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+prims = list(exported.primitives.values())
+l1_end = prims[0].end
+l2_start = prims[1].start
+
+dx = abs(l2_start.x - l1_end.x)
+
+result = {{
+    "success": True,
+    "dx": dx
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["dx"] - 40) < 0.1
+
+    def test_distance_y_constraint(self):
+        """Test vertical distance constraint."""
+        sketch = SketchDocument(name="DistanceYTest")
+        l1 = sketch.add_primitive(Line(
+            start=Point2D(0, 0),
+            end=Point2D(50, 0)
+        ))
+        l2 = sketch.add_primitive(Line(
+            start=Point2D(0, 30),
+            end=Point2D(50, 30)
+        ))
+        sketch.add_constraint(DistanceY(
+            PointRef(l1, PointType.START),
+            50,
+            PointRef(l2, PointType.START)
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+prims = list(exported.primitives.values())
+l1_start = prims[0].start
+l2_start = prims[1].start
+
+dy = abs(l2_start.y - l1_start.y)
+
+result = {{
+    "success": True,
+    "dy": dy
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert abs(result["dy"] - 50) < 0.1
+
+
+class TestFreeCADRoundTripSplineAdvanced:
+    """Advanced spline tests including higher degrees and special cases."""
+
+    def test_higher_degree_spline(self):
+        """Test round-trip of a degree-4 B-spline."""
+        sketch = SketchDocument(name="Degree4SplineTest")
+
+        spline = Spline.create_uniform_bspline(
+            control_points=[
+                Point2D(0, 0),
+                Point2D(25, 50),
+                Point2D(50, 0),
+                Point2D(75, 50),
+                Point2D(100, 0)
+            ],
+            degree=4
+        )
+        sketch.add_primitive(spline)
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+spline = list(exported.primitives.values())[0]
+
+result = {{
+    "success": True,
+    "type": type(spline).__name__,
+    "degree": spline.degree,
+    "control_point_count": len(spline.control_points)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["type"] == "Spline"
+        assert result["degree"] == 4
+        assert result["control_point_count"] == 5
+
+    def test_many_control_points_spline(self):
+        """Test spline with many control points."""
+        sketch = SketchDocument(name="ManyPointsSplineTest")
+
+        control_pts = [
+            Point2D(i * 15, 30 * math.sin(i * 0.8))
+            for i in range(8)
+        ]
+        spline = Spline.create_uniform_bspline(
+            control_points=control_pts,
+            degree=3
+        )
+        sketch.add_primitive(spline)
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+spline = list(exported.primitives.values())[0]
+
+result = {{
+    "success": True,
+    "control_point_count": len(spline.control_points)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["control_point_count"] == 8
+
+    def test_weighted_spline(self):
+        """Test spline with non-uniform weights (NURBS)."""
+        sketch = SketchDocument(name="WeightedSplineTest")
+
+        spline = Spline(
+            control_points=[
+                Point2D(0, 0),
+                Point2D(50, 100),
+                Point2D(100, 0)
+            ],
+            degree=2,
+            knots=[0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            weights=[1.0, 2.0, 1.0]  # Higher weight pulls curve toward middle point
+        )
+        sketch.add_primitive(spline)
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+spline = list(exported.primitives.values())[0]
+
+result = {{
+    "success": True,
+    "type": type(spline).__name__,
+    "has_weights": spline.weights is not None and len(spline.weights) > 0
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["type"] == "Spline"
+
+
+class TestFreeCADRoundTripComplexScenarios:
+    """Tests for complex geometry scenarios."""
+
+    def test_closed_profile(self):
+        """Test a closed profile with connected lines (triangle)."""
+        sketch = SketchDocument(name="ClosedProfileTest")
+
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(50, 80)))
+        l3 = sketch.add_primitive(Line(start=Point2D(50, 80), end=Point2D(0, 0)))
+
+        sketch.add_constraint(Coincident(PointRef(l1, PointType.END), PointRef(l2, PointType.START)))
+        sketch.add_constraint(Coincident(PointRef(l2, PointType.END), PointRef(l3, PointType.START)))
+        sketch.add_constraint(Coincident(PointRef(l3, PointType.END), PointRef(l1, PointType.START)))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from collections import Counter
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+lines = list(exported.primitives.values())
+endpoints = []
+for line in lines:
+    endpoints.append((round(line.start.x, 1), round(line.start.y, 1)))
+    endpoints.append((round(line.end.x, 1), round(line.end.y, 1)))
+
+counts = Counter(endpoints)
+is_closed = all(c == 2 for c in counts.values())
+
+result = {{
+    "success": True,
+    "primitive_count": len(lines),
+    "is_closed": is_closed
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["primitive_count"] == 3
+        assert result["is_closed"], "Profile not properly closed"
+
+    def test_slot_profile(self):
+        """Test a slot profile (two semicircles connected by lines)."""
+        sketch = SketchDocument(name="SlotTest")
+
+        sketch.add_primitive(Line(start=Point2D(20, 0), end=Point2D(80, 0)))
+        sketch.add_primitive(Line(start=Point2D(80, 40), end=Point2D(20, 40)))
+        sketch.add_primitive(Arc(
+            center=Point2D(80, 20),
+            start_point=Point2D(80, 0),
+            end_point=Point2D(80, 40),
+            ccw=True
+        ))
+        sketch.add_primitive(Arc(
+            center=Point2D(20, 20),
+            start_point=Point2D(20, 40),
+            end_point=Point2D(20, 0),
+            ccw=True
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line, Arc
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+
+result = {{
+    "success": True,
+    "line_count": len(lines),
+    "arc_count": len(arcs),
+    "total": len(exported.primitives)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["line_count"] == 2
+        assert result["arc_count"] == 2
+        assert result["total"] == 4
+
+    def test_nested_geometry(self):
+        """Test circle inside rectangle (common CAD pattern)."""
+        sketch = SketchDocument(name="NestedTest")
+
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(100, 80)))
+        sketch.add_primitive(Line(start=Point2D(100, 80), end=Point2D(0, 80)))
+        sketch.add_primitive(Line(start=Point2D(0, 80), end=Point2D(0, 0)))
+        sketch.add_primitive(Circle(center=Point2D(50, 40), radius=25))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+circles = [p for p in exported.primitives.values() if isinstance(p, Circle)]
+
+result = {{
+    "success": True,
+    "line_count": len(lines),
+    "circle_count": len(circles),
+    "total": len(exported.primitives)
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["line_count"] == 4
+        assert result["circle_count"] == 1
+        assert result["total"] == 5
+
+    def test_concentric_circles(self):
+        """Test multiple concentric circles."""
+        sketch = SketchDocument(name="ConcentricCirclesTest")
+
+        c1 = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=10))
+        c2 = sketch.add_primitive(Circle(center=Point2D(52, 52), radius=25))
+        c3 = sketch.add_primitive(Circle(center=Point2D(48, 48), radius=40))
+
+        sketch.add_constraint(Concentric(c1, c2))
+        sketch.add_constraint(Concentric(c2, c3))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+import math
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+circles = list(exported.primitives.values())
+
+# Check all centers are the same
+centers = [(c.center.x, c.center.y) for c in circles]
+max_dist = 0
+for i, c1 in enumerate(centers):
+    for c2 in centers[i+1:]:
+        dist = math.sqrt((c1[0]-c2[0])**2 + (c1[1]-c2[1])**2)
+        max_dist = max(max_dist, dist)
+
+result = {{
+    "success": True,
+    "circle_count": len(circles),
+    "max_center_distance": max_dist,
+    "are_concentric": max_dist < 0.1
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["circle_count"] == 3
+        assert result["are_concentric"], f"Not concentric: max distance={result['max_center_distance']}"
+
+    def test_equal_circles(self):
+        """Test equal constraint on circles."""
+        sketch = SketchDocument(name="EqualCirclesTest")
+
+        c1 = sketch.add_primitive(Circle(center=Point2D(30, 50), radius=20))
+        c2 = sketch.add_primitive(Circle(center=Point2D(80, 50), radius=30))
+
+        sketch.add_constraint(Equal(c1, c2))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+circles = list(exported.primitives.values())
+
+result = {{
+    "success": True,
+    "radius1": circles[0].radius,
+    "radius2": circles[1].radius,
+    "are_equal": abs(circles[0].radius - circles[1].radius) < 0.1
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+        assert result["are_equal"], f"Radii not equal: {result['radius1']} vs {result['radius2']}"
 
 
 if __name__ == "__main__":

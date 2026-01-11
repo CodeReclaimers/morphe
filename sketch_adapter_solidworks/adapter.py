@@ -1139,17 +1139,76 @@ class SolidWorksAdapter(SketchBackendAdapter):
         return True
 
     def _add_concentric(self, model: Any, refs: list) -> bool:
-        """Add a concentric constraint."""
+        """Add a concentric constraint by moving the second entity's center.
+
+        Note: SolidWorks API's sgCONCENTRIC and sgCOINCIDENT on center points
+        don't reliably move geometry. Instead, we delete and recreate the second
+        circle/arc at the first entity's center position.
+        """
         if len(refs) < 2:
             raise ConstraintError("Concentric requires 2 references")
 
-        model.ClearSelection2(True)
-        if not self._select_entity(refs[0], False):
-            raise ConstraintError("Could not select first entity")
-        if not self._select_entity(refs[1], True):
-            raise ConstraintError("Could not select second entity")
+        entity1_id = refs[0]
+        entity2_id = refs[1]
 
-        model.SketchAddConstraints("sgCONCENTRIC")
+        # Get the center of the first entity
+        center1_x, center1_y = None, None
+        for geom in self._segment_geometry_list:
+            if geom.get('element_id') == entity1_id:
+                if geom['type'] in ('circle', 'arc'):
+                    center1_x, center1_y = geom['center']
+                break
+
+        if center1_x is None:
+            raise ConstraintError(f"Could not find center for first entity: {entity1_id}")
+
+        # Get the second entity's geometry info
+        geom2 = None
+        for geom in self._segment_geometry_list:
+            if geom.get('element_id') == entity2_id:
+                geom2 = geom
+                break
+
+        if geom2 is None or geom2['type'] not in ('circle', 'arc'):
+            raise ConstraintError(f"Second entity must be a circle or arc: {entity2_id}")
+
+        # Get the second entity for deletion
+        entity2 = self._id_to_entity.get(entity2_id)
+        if entity2 is None:
+            raise ConstraintError(f"Could not find second entity: {entity2_id}")
+
+        # Delete the second entity
+        model.ClearSelection2(True)
+        entity2.Select(False)
+        model.EditDelete()
+
+        # Recreate the second entity at the first entity's center
+        if geom2['type'] == 'circle':
+            radius = geom2['radius']
+            new_entity = self._sketch_manager.CreateCircle(
+                center1_x * MM_TO_M, center1_y * MM_TO_M, 0,
+                (center1_x + radius) * MM_TO_M, center1_y * MM_TO_M, 0
+            )
+        else:  # arc
+            # For arcs, we need start/end angles and radius
+            radius = geom2['radius']
+            start_angle = geom2.get('start_angle', 0)
+            end_angle = geom2.get('end_angle', math.pi)
+            new_entity = self._sketch_manager.CreateArc(
+                center1_x * MM_TO_M, center1_y * MM_TO_M, 0,
+                (center1_x + radius * math.cos(start_angle)) * MM_TO_M,
+                (center1_y + radius * math.sin(start_angle)) * MM_TO_M, 0,
+                (center1_x + radius * math.cos(end_angle)) * MM_TO_M,
+                (center1_y + radius * math.sin(end_angle)) * MM_TO_M, 0,
+                1  # Direction
+            )
+
+        # Update mappings
+        if new_entity is not None:
+            self._id_to_entity[entity2_id] = new_entity
+            # Update stored geometry
+            geom2['center'] = (center1_x, center1_y)
+
         return True
 
     def _add_collinear(self, model: Any, refs: list) -> bool:

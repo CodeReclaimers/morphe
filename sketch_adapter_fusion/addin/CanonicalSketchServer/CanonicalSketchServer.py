@@ -113,10 +113,8 @@ def run(context: dict) -> None:
         from sketch_adapter_fusion.server import start_server, is_server_running
 
         if is_server_running():
-            _ui.messageBox(
-                "Canonical Sketch Server is already running.",
-                "Canonical Sketch Server"
-            )
+            # Server already running (e.g., add-in reloaded within same session)
+            _app.log("Canonical Sketch Server already running on localhost:9879")
             _server_started = True
             return
 

@@ -669,6 +669,11 @@ def stop_server() -> None:
     global _server, _server_thread
 
     if _server is not None:
+        # Set a short socket timeout to speed up shutdown
+        try:
+            _server.socket.settimeout(0.5)
+        except Exception:
+            pass
         _server.shutdown()
         _server = None
         _server_thread = None

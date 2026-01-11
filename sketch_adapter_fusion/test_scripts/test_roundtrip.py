@@ -2013,6 +2013,143 @@ class FusionTestRunner:
         assert abs(lines[1].end.x - lines[2].start.x) < 0.01, "L2 end should connect to L3 start"
         assert abs(lines[1].end.y - lines[2].start.y) < 0.01, "L2 end should connect to L3 start"
 
+    # =========================================================================
+    # Constraint Export Regression Tests
+    # =========================================================================
+
+    def test_constraint_export_has_ids(self):
+        """Test that exported constraints have unique IDs.
+
+        Regression test for: SketchConstraint.__init__() missing required 'id' argument.
+        Fixed by adding _generate_constraint_id() helper.
+        """
+        sketch = SketchDocument(name="ConstraintIDTest")
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(0, 30), end=Point2D(100, 30)))
+        sketch.add_constraint(Horizontal(l1))
+        sketch.add_constraint(Horizontal(l2))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        # Get constraints that have IDs
+        constraints_with_ids = [
+            c for c in exported.constraints
+            if hasattr(c, 'id') and c.id is not None
+        ]
+
+        # Should have at least 2 constraints with unique IDs
+        assert len(constraints_with_ids) >= 2, \
+            f"Expected at least 2 constraints with IDs, got {len(constraints_with_ids)}"
+
+        # IDs should be unique
+        ids = [c.id for c in constraints_with_ids]
+        assert len(ids) == len(set(ids)), "Constraint IDs should be unique"
+
+    def test_constraint_export_rectangle_all_constraints(self):
+        """Test that rectangle with H/V constraints exports all 4 constraints."""
+        sketch = SketchDocument(name="RectConstraintExportTest")
+
+        # Create rectangle
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(100, 50)))
+        l3 = sketch.add_primitive(Line(start=Point2D(100, 50), end=Point2D(0, 50)))
+        l4 = sketch.add_primitive(Line(start=Point2D(0, 50), end=Point2D(0, 0)))
+
+        sketch.add_constraint(Horizontal(l1))
+        sketch.add_constraint(Vertical(l2))
+        sketch.add_constraint(Horizontal(l3))
+        sketch.add_constraint(Vertical(l4))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        # Count exported constraints by type
+        horizontal_count = sum(
+            1 for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'HORIZONTAL'
+        )
+        vertical_count = sum(
+            1 for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'VERTICAL'
+        )
+
+        assert horizontal_count == 2, f"Expected 2 horizontal constraints, got {horizontal_count}"
+        assert vertical_count == 2, f"Expected 2 vertical constraints, got {vertical_count}"
+
+    def test_constraint_export_dimensional(self):
+        """Test that dimensional constraints are exported correctly."""
+        sketch = SketchDocument(name="DimensionalConstraintExportTest")
+
+        circle_id = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=20))
+        sketch.add_constraint(Diameter(circle_id, 60))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        # Circle should have the constrained diameter
+        circle = list(exported.primitives.values())[0]
+        assert abs(circle.radius - 30) < 0.1, f"Circle radius should be 30, got {circle.radius}"
+
+        # Should have a diameter constraint in export
+        diameter_constraints = [
+            c for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'DIAMETER'
+        ]
+        assert len(diameter_constraints) >= 1, "Should have at least 1 diameter constraint"
+
+    def test_constraint_export_mixed_types(self):
+        """Test exporting sketch with geometric and dimensional constraints."""
+        sketch = SketchDocument(name="MixedConstraintExportTest")
+
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(80, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(80, 0), end=Point2D(80, 50)))
+        circle = sketch.add_primitive(Circle(center=Point2D(40, 25), radius=15))
+
+        sketch.add_constraint(Horizontal(l1))
+        sketch.add_constraint(Vertical(l2))
+        sketch.add_constraint(Length(l1, 100))
+        sketch.add_constraint(Diameter(circle, 40))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        assert len(exported.primitives) == 3, "Should have 3 primitives"
+        assert len(exported.constraints) >= 4, \
+            f"Should have at least 4 constraints, got {len(exported.constraints)}"
+
+    def test_constraint_export_entity_references(self):
+        """Test that exported constraints have valid entity references."""
+        sketch = SketchDocument(name="ConstraintReferencesTest")
+
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(0, 30), end=Point2D(50, 30)))
+        sketch.add_constraint(Parallel(l1, l2))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        # Find parallel constraints
+        parallel_constraints = [
+            c for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'PARALLEL'
+        ]
+
+        assert len(parallel_constraints) >= 1, "Should have at least 1 parallel constraint"
+
+        # Check that references point to valid primitive IDs
+        primitive_ids = set(exported.primitives.keys())
+        for constraint in parallel_constraints:
+            for ref in constraint.references:
+                if isinstance(ref, str):
+                    assert ref in primitive_ids, \
+                        f"Constraint references unknown primitive: {ref}"
+
 
 def run(context):
     """Main entry point for Fusion 360 script."""

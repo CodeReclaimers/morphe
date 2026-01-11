@@ -2041,3 +2041,154 @@ class TestSolidWorksRoundTripSymmetric:
         lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
         non_construction = [ln for ln in lines if not ln.construction]
         assert len(non_construction) >= 6, "Should have at least 6 non-construction lines"
+
+
+class TestSolidWorksConstraintExportRegression:
+    """Regression tests for constraint export edge cases.
+
+    These tests verify fixes for COM late-binding quirks discovered during
+    constraint export development. See COM_QUIRKS.md for details.
+    """
+
+    def test_rectangle_exports_all_constraints(self, adapter):
+        """Test that rectangle with H/V constraints exports all 4 constraints.
+
+        Regression test for: Same-length segments returning same ID due to
+        length-based property matching. Fixed by using index-based segment ID lookup.
+        """
+        sketch = SketchDocument(name="RectConstraintExportTest")
+
+        # Create rectangle - opposite sides have same length
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))      # bottom (horizontal)
+        l2 = sketch.add_primitive(Line(start=Point2D(100, 0), end=Point2D(100, 50)))   # right (vertical)
+        l3 = sketch.add_primitive(Line(start=Point2D(100, 50), end=Point2D(0, 50)))    # top (horizontal)
+        l4 = sketch.add_primitive(Line(start=Point2D(0, 50), end=Point2D(0, 0)))       # left (vertical)
+
+        # Add horizontal/vertical constraints to all sides
+        sketch.add_constraint(Horizontal(l1))
+        sketch.add_constraint(Vertical(l2))
+        sketch.add_constraint(Horizontal(l3))
+        sketch.add_constraint(Vertical(l4))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Should export all 4 constraints, not just 2
+        horizontal_constraints = [
+            c for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'HORIZONTAL'
+        ]
+        vertical_constraints = [
+            c for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'VERTICAL'
+        ]
+
+        assert len(horizontal_constraints) == 2, \
+            f"Expected 2 horizontal constraints, got {len(horizontal_constraints)}"
+        assert len(vertical_constraints) == 2, \
+            f"Expected 2 vertical constraints, got {len(vertical_constraints)}"
+
+    def test_single_entity_constraint_uses_source_segment(self, adapter):
+        """Test that H/V constraints use source segment ID directly.
+
+        Regression test for: GetEntities returning ambiguous COM objects
+        that can't be reliably matched. Fixed by using source segment ID
+        for single-entity constraint types.
+        """
+        sketch = SketchDocument(name="SingleEntityConstraintTest")
+
+        # Create two lines with the same length
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(0, 30), end=Point2D(50, 30)))
+
+        # Add horizontal constraint to each
+        sketch.add_constraint(Horizontal(l1))
+        sketch.add_constraint(Horizontal(l2))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Should have 2 horizontal constraints on different lines
+        horizontal_constraints = [
+            c for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'HORIZONTAL'
+        ]
+
+        assert len(horizontal_constraints) == 2, \
+            f"Expected 2 horizontal constraints, got {len(horizontal_constraints)}"
+
+        # Constraints should reference different entities
+        refs = [tuple(c.references) for c in horizontal_constraints]
+        assert refs[0] != refs[1], "Constraints should reference different lines"
+
+    def test_constraint_deduplication(self, adapter):
+        """Test that duplicate constraints from multiple segments are deduplicated.
+
+        When iterating through segments, the same constraint may be found from
+        multiple entry points. The adapter should deduplicate these.
+        """
+        sketch = SketchDocument(name="ConstraintDedupTest")
+
+        line_id = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(100, 0)))
+        sketch.add_constraint(Horizontal(line_id))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Should have exactly 1 horizontal constraint, not duplicates
+        horizontal_constraints = [
+            c for c in exported.constraints
+            if hasattr(c, 'constraint_type') and c.constraint_type.name == 'HORIZONTAL'
+        ]
+
+        assert len(horizontal_constraints) == 1, \
+            f"Expected exactly 1 horizontal constraint, got {len(horizontal_constraints)}"
+
+    def test_circle_constraint_export(self, adapter):
+        """Test that constraints on circles are exported correctly."""
+        sketch = SketchDocument(name="CircleConstraintExportTest")
+
+        c1 = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=20))
+        c2 = sketch.add_primitive(Circle(center=Point2D(100, 50), radius=30))
+        sketch.add_constraint(Equal(c1, c2))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Circles should have equal radii
+        circles = list(exported.primitives.values())
+        assert abs(circles[0].radius - circles[1].radius) < 0.1, \
+            "Circles should have equal radii after constraint"
+
+    def test_mixed_constraint_types_export(self, adapter):
+        """Test exporting sketch with multiple constraint types."""
+        sketch = SketchDocument(name="MixedConstraintExportTest")
+
+        l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(80, 0)))
+        l2 = sketch.add_primitive(Line(start=Point2D(80, 0), end=Point2D(80, 60)))
+        c1 = sketch.add_primitive(Circle(center=Point2D(40, 30), radius=15))
+
+        sketch.add_constraint(Horizontal(l1))
+        sketch.add_constraint(Vertical(l2))
+        sketch.add_constraint(Perpendicular(l1, l2))
+        sketch.add_constraint(Coincident(
+            PointRef(l1, PointType.END),
+            PointRef(l2, PointType.START)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 3, "Should have 3 primitives"
+        # Verify geometry constraints were applied
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        horizontal_line = next((ln for ln in lines if abs(ln.start.y - ln.end.y) < 0.1), None)
+        vertical_line = next((ln for ln in lines if abs(ln.start.x - ln.end.x) < 0.1), None)
+
+        assert horizontal_line is not None, "Should have a horizontal line"
+        assert vertical_line is not None, "Should have a vertical line"

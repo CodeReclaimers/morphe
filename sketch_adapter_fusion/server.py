@@ -725,7 +725,7 @@ def probe_constraints(sketch_name: str) -> dict:
 
                 # Try direct horizontal conversion
                 try:
-                    from sketch_canonical import SketchConstraint, ConstraintType
+                    from sketch_canonical import ConstraintType, SketchConstraint
                     line = c.line
                     entity_id = adapter._get_id_for_entity(line)
                     result["direct_entity_id"] = entity_id
@@ -735,7 +735,7 @@ def probe_constraints(sketch_name: str) -> dict:
                             references=[entity_id]
                         )
                         result["direct_constraint"] = str(sc)
-                except Exception as e:
+                except Exception:
                     import traceback
                     result["direct_convert_error"] = traceback.format_exc()[-500:]
 
@@ -743,7 +743,7 @@ def probe_constraints(sketch_name: str) -> dict:
                 try:
                     converted = adapter._convert_horizontal(c)
                     result["convert_horizontal_result"] = str(converted) if converted else "None"
-                except Exception as e:
+                except Exception:
                     import traceback
                     result["convert_horizontal_error"] = traceback.format_exc()[-500:]
 
@@ -769,7 +769,7 @@ def probe_constraints(sketch_name: str) -> dict:
                         dim_info["error"] = str(e)[:100]
                     try:
                         dim_info["value"] = dim.parameter.value * 10  # cm to mm
-                    except:
+                    except Exception:
                         pass
                     offset_dim_info.append(dim_info)
             result["offset_dimensions"] = offset_dim_info

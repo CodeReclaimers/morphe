@@ -2170,7 +2170,7 @@ class TestSolidWorksConstraintExportRegression:
 
         l1 = sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(80, 0)))
         l2 = sketch.add_primitive(Line(start=Point2D(80, 0), end=Point2D(80, 60)))
-        c1 = sketch.add_primitive(Circle(center=Point2D(40, 30), radius=15))
+        sketch.add_primitive(Circle(center=Point2D(40, 30), radius=15))  # Just add, ID not needed
 
         sketch.add_constraint(Horizontal(l1))
         sketch.add_constraint(Vertical(l2))

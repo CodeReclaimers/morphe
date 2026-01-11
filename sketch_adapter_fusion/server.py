@@ -621,7 +621,7 @@ def open_sketch_in_edit_mode(sketch_name: str) -> bool:
 def probe_constraints(sketch_name: str) -> dict:
     """Probe a sketch to find what constraints exist.
 
-    DEBUG FUNCTION: This can be removed once constraint export is stable.
+    TODO: Remove on next cleanup pass - debug function for constraint export development.
     """
     if not FUSION_AVAILABLE:
         raise RuntimeError("Fusion 360 is not available")

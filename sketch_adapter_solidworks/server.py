@@ -156,9 +156,8 @@ def _get_feature_type(feat: Any) -> str:
 def probe_constraints(sketch_name: str) -> dict:
     """Probe a sketch to find how to access constraints.
 
-    DEBUG FUNCTION: This can be removed once constraint export is stable.
-    It's useful for discovering how SolidWorks exposes constraint/relation
-    data via late-bound COM.
+    TODO: Remove on next cleanup pass - debug function for constraint export development.
+    Useful for discovering how SolidWorks exposes constraint/relation data via late-bound COM.
     """
     if not SOLIDWORKS_AVAILABLE:
         raise RuntimeError("SolidWorks is not available")
@@ -200,9 +199,10 @@ def probe_constraints(sketch_name: str) -> dict:
 
         result["segment_count"] = len(segments)
 
-        # Store segment info with length-based matching
+        # Store segment info with length-based and midpoint-based matching
         segment_info = []
         length_to_seg = {}  # Map length -> segment index
+        midpoint_to_seg = {}  # Map (x, y) -> segment index
         for i, seg in enumerate(segments):
             info = {"index": i}
             try:
@@ -211,8 +211,27 @@ def probe_constraints(sketch_name: str) -> dict:
                 length_to_seg[round(length, 10)] = i
             except Exception:
                 pass
+            # Try to get midpoint
+            try:
+                start_pt = seg.GetStartPoint2
+                if callable(start_pt):
+                    start_pt = start_pt()
+                end_pt = seg.GetEndPoint2
+                if callable(end_pt):
+                    end_pt = end_pt()
+                if start_pt and end_pt:
+                    sx = start_pt.X if hasattr(start_pt, 'X') else 0
+                    sy = start_pt.Y if hasattr(start_pt, 'Y') else 0
+                    ex = end_pt.X if hasattr(end_pt, 'X') else 0
+                    ey = end_pt.Y if hasattr(end_pt, 'Y') else 0
+                    midpoint = (round(((sx + ex) / 2) * 1000, 6), round(((sy + ey) / 2) * 1000, 6))
+                    info["midpoint"] = midpoint
+                    midpoint_to_seg[midpoint] = i
+            except Exception as e:
+                info["midpoint_error"] = str(e)[:50]
             segment_info.append(info)
         result["segments"] = segment_info
+        result["midpoint_count"] = len(midpoint_to_seg)
 
         # Get ALL relations from ALL segments (before dedup)
         all_relations = []
@@ -242,15 +261,37 @@ def probe_constraints(sketch_name: str) -> dict:
 
                         if entities:
                             rel_info["entity_count"] = len(entities)
-                            matched_segments = []
+                            matched_by_length = []
+                            matched_by_midpoint = []
                             for ent in entities:
                                 try:
                                     ent_length = round(ent.GetLength, 10)
                                     if ent_length in length_to_seg:
-                                        matched_segments.append(length_to_seg[ent_length])
+                                        matched_by_length.append(length_to_seg[ent_length])
                                 except Exception:
                                     pass
-                            rel_info["matched_segments"] = matched_segments
+                                # Try midpoint matching
+                                try:
+                                    start_pt = ent.GetStartPoint2
+                                    if callable(start_pt):
+                                        start_pt = start_pt()
+                                    end_pt = ent.GetEndPoint2
+                                    if callable(end_pt):
+                                        end_pt = end_pt()
+                                    if start_pt and end_pt:
+                                        sx = start_pt.X if hasattr(start_pt, 'X') else 0
+                                        sy = start_pt.Y if hasattr(start_pt, 'Y') else 0
+                                        ex = end_pt.X if hasattr(end_pt, 'X') else 0
+                                        ey = end_pt.Y if hasattr(end_pt, 'Y') else 0
+                                        midpoint = (round(((sx + ex) / 2) * 1000, 6), round(((sy + ey) / 2) * 1000, 6))
+                                        if midpoint in midpoint_to_seg:
+                                            matched_by_midpoint.append(midpoint_to_seg[midpoint])
+                                        else:
+                                            rel_info["entity_midpoint_not_found"] = midpoint
+                                except Exception:
+                                    pass
+                            rel_info["matched_by_length"] = matched_by_length
+                            rel_info["matched_by_midpoint"] = matched_by_midpoint
 
                         # Probe for dimension-related attributes on the relation
                         dim_attrs = ["Value", "GetValue", "Dimension", "GetDimension",

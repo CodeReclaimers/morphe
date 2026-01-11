@@ -190,6 +190,8 @@ class SolidWorksAdapter(SketchBackendAdapter):
         # (COM returns different wrapper objects, so id() matching doesn't work)
         self._length_to_id: dict[float, str] = {}
         self._radius_to_id: dict[float, str] = {}
+        self._midpoint_to_id: dict[tuple[float, float], str] = {}  # (x, y) -> id
+        self._segment_index_to_id: list[str | None] = []  # index -> id
 
     def _disable_dimension_dialog(self) -> None:
         """Disable the dimension input dialog that blocks automation.
@@ -445,6 +447,8 @@ class SolidWorksAdapter(SketchBackendAdapter):
             # COM returns different wrapper objects, so we can't use id() for matching
             self._length_to_id: dict[float, str] = {}
             self._radius_to_id: dict[float, str] = {}
+            self._midpoint_to_id: dict[tuple[float, float], str] = {}  # (x, y) -> id
+            self._segment_index_to_id: list[str | None] = []  # index -> id (for constraint export)
 
             # Get all sketch segments
             # Note: In COM late binding, GetSketchSegments may be a property returning
@@ -462,6 +466,10 @@ class SolidWorksAdapter(SketchBackendAdapter):
                         doc.add_primitive(prim)
                         self._entity_to_id[id(segment)] = prim.id
                         self._id_to_entity[prim.id] = segment
+                        # Track segment index to ID for constraint export
+                        while len(self._segment_index_to_id) <= seg_idx:
+                            self._segment_index_to_id.append(None)
+                        self._segment_index_to_id[seg_idx] = prim.id
 
                         # Build property-based mappings for constraint entity matching
                         try:
@@ -492,6 +500,12 @@ class SolidWorksAdapter(SketchBackendAdapter):
                                 (round(prim.end.x, 4), round(prim.end.y, 4))
                             )
                             self._used_point_pairs.add(pair_key)
+                            # Build midpoint mapping for unique line identification
+                            midpoint_key = (
+                                round((prim.start.x + prim.end.x) / 2, 6),
+                                round((prim.start.y + prim.end.y) / 2, 6)
+                            )
+                            self._midpoint_to_id[midpoint_key] = prim.id
                         elif isinstance(prim, Arc):
                             used_point_coords.add((round(prim.start_point.x, 6), round(prim.start_point.y, 6)))
                             used_point_coords.add((round(prim.end_point.x, 6), round(prim.end_point.y, 6)))
@@ -2119,10 +2133,16 @@ class SolidWorksAdapter(SketchBackendAdapter):
             if not segments:
                 return
 
-            for segment in segments:
+            for seg_idx, segment in enumerate(segments):
                 try:
-                    # Get the ID of this segment for including in references
-                    segment_id = self._get_entity_id_by_properties(segment)
+                    # Get the ID of this segment using index-based lookup
+                    # (property-based matching fails when segments have same length)
+                    segment_id = None
+                    if seg_idx < len(self._segment_index_to_id):
+                        segment_id = self._segment_index_to_id[seg_idx]
+                    if not segment_id:
+                        # Fallback to property-based matching
+                        segment_id = self._get_entity_id_by_properties(segment)
 
                     # Get relations for this segment
                     relations = segment.GetRelations
@@ -2144,13 +2164,14 @@ class SolidWorksAdapter(SketchBackendAdapter):
                             entities_count = entities_count()
 
                         # Create a key to deduplicate relations
-                        # Use type + entity count as rough key
-                        simple_key = (rel_type, entities_count)
-                        if simple_key in seen_relations:
+                        # Include segment_id to distinguish constraints on different entities
+                        # (same relation type on different segments are different constraints)
+                        dedup_key = (rel_type, segment_id)
+                        if dedup_key in seen_relations:
                             # Skip duplicate
                             continue
 
-                        seen_relations.add(simple_key)
+                        seen_relations.add(dedup_key)
 
                         canonical = self._convert_relation(relation, segment_id)
                         if canonical is not None:
@@ -2163,8 +2184,52 @@ class SolidWorksAdapter(SketchBackendAdapter):
             pass
 
     def _get_entity_id_by_properties(self, entity: Any) -> str | None:
-        """Get entity ID by matching geometric properties (length, radius)."""
-        # Try matching by length
+        """Get entity ID by matching geometric properties (midpoint, length, radius).
+
+        Uses midpoint for lines first (most unique), then falls back to length/radius.
+        """
+        # Try matching by midpoint (most unique for lines with same length)
+        try:
+            # Try to get start/end points to calculate midpoint
+            start_pt = None
+            end_pt = None
+            for start_attr in ["GetStartPoint2", "StartPoint"]:
+                try:
+                    start_pt = getattr(entity, start_attr, None)
+                    if callable(start_pt):
+                        start_pt = start_pt()
+                    if start_pt is not None:
+                        break
+                except Exception:
+                    pass
+            for end_attr in ["GetEndPoint2", "EndPoint"]:
+                try:
+                    end_pt = getattr(entity, end_attr, None)
+                    if callable(end_pt):
+                        end_pt = end_pt()
+                    if end_pt is not None:
+                        break
+                except Exception:
+                    pass
+
+            if start_pt is not None and end_pt is not None:
+                # Get coordinates (SolidWorks returns in meters)
+                sx = self._get_com_result(start_pt, "X") or 0
+                sy = self._get_com_result(start_pt, "Y") or 0
+                ex = self._get_com_result(end_pt, "X") or 0
+                ey = self._get_com_result(end_pt, "Y") or 0
+                # Convert to mm and calculate midpoint
+                midpoint_key = (
+                    round(((sx + ex) / 2) * 1000, 6),
+                    round(((sy + ey) / 2) * 1000, 6)
+                )
+                entity_id = self._midpoint_to_id.get(midpoint_key)
+                if entity_id:
+                    return entity_id
+        except Exception:
+            pass
+
+        # Try matching by length (fallback for non-line entities)
         try:
             length = entity.GetLength
             if length is not None:
@@ -2175,7 +2240,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
         except Exception:
             pass
 
-        # Try matching by radius
+        # Try matching by radius (for circles/arcs)
         try:
             radius = entity.GetRadius
             if radius is not None:
@@ -2224,45 +2289,42 @@ class SolidWorksAdapter(SketchBackendAdapter):
 
             ctype = type_map[rel_type]
 
-            # Get entities involved - handle property/method access
-            entities = relation.GetEntities
-            if callable(entities):
-                entities = entities()
+            # For single-entity constraints (horizontal, vertical, fixed), the source
+            # segment IS the constrained entity. Use source_segment_id directly to avoid
+            # length-matching ambiguity when multiple segments have the same length.
+            single_entity_types = {
+                SwConstraintType.HORIZONTAL,
+                SwConstraintType.VERTICAL,
+                SwConstraintType.FIX,
+            }
 
             refs: list[str | PointRef] = []
-            if entities:
-                for entity in entities:
-                    # First try direct id() match (might work if same COM context)
-                    entity_id = self._entity_to_id.get(id(entity))
 
-                    # If that fails, try property-based matching
-                    if not entity_id:
-                        # Try matching by length
-                        try:
-                            length = entity.GetLength
-                            if length is not None:
-                                length_key = round(length, 10)
-                                entity_id = self._length_to_id.get(length_key)
-                        except Exception:
-                            pass
-
-                    if not entity_id:
-                        # Try matching by radius
-                        try:
-                            radius = entity.GetRadius
-                            if radius is not None:
-                                radius_key = round(radius, 10)
-                                entity_id = self._radius_to_id.get(radius_key)
-                        except Exception:
-                            pass
-
-                    if entity_id:
-                        refs.append(entity_id)
-
-            # If we have the source segment and it's not already in refs, add it
-            # This handles cases where GetEntities doesn't return all involved entities
-            if source_segment_id and source_segment_id not in refs:
+            if rel_type in single_entity_types and source_segment_id:
+                # For single-entity constraints, use source segment directly
                 refs.append(source_segment_id)
+            else:
+                # Get entities involved - handle property/method access
+                entities = relation.GetEntities
+                if callable(entities):
+                    entities = entities()
+
+                if entities:
+                    for entity in entities:
+                        # First try direct id() match (might work if same COM context)
+                        entity_id = self._entity_to_id.get(id(entity))
+
+                        # If that fails, try property-based matching
+                        if not entity_id:
+                            entity_id = self._get_entity_id_by_properties(entity)
+
+                        if entity_id:
+                            refs.append(entity_id)
+
+                # If we have the source segment and it's not already in refs, add it
+                # This handles cases where GetEntities doesn't return all involved entities
+                if source_segment_id and source_segment_id not in refs:
+                    refs.append(source_segment_id)
 
             if not refs:
                 return None

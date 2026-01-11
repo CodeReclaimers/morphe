@@ -378,14 +378,24 @@ def get_status() -> dict:
 
             app = get_solidworks_application()
             try:
-                version = app.RevisionNumber()
+                version = app.RevisionNumber
                 result["solidworks_version"] = version
             except Exception:
                 result["solidworks_version"] = "unknown"
 
             doc = app.ActiveDoc
             if doc:
-                result["active_document"] = doc.GetPathName() or doc.GetTitle()
+                # GetPathName and GetTitle may be properties or methods depending on binding
+                try:
+                    path = doc.GetPathName
+                    if callable(path):
+                        path = path()
+                    title = doc.GetTitle
+                    if callable(title):
+                        title = title()
+                    result["active_document"] = path or title
+                except Exception:
+                    result["active_document"] = "unknown"
                 # Count sketches
                 sketch_count = 0
                 try:

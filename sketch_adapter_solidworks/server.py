@@ -93,6 +93,66 @@ def _get_sketch_from_json() -> Any:
     return sketch_from_json
 
 
+def _iterate_features(doc: Any) -> list[Any]:
+    """
+    Iterate through all features in a document.
+
+    Uses FeatureByPositionReverse since FirstFeature/GetNextFeature
+    don't work with late-bound COM.
+
+    Args:
+        doc: SolidWorks document object
+
+    Returns:
+        List of feature objects
+    """
+    features = []
+    try:
+        fm = doc.FeatureManager
+        feature_count = fm.GetFeatureCount(True)
+        for i in range(feature_count):
+            try:
+                feat = doc.FeatureByPositionReverse(i)
+                if feat is not None:
+                    features.append(feat)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return features
+
+
+def _find_feature_by_name(doc: Any, name: str) -> Any | None:
+    """
+    Find a feature by name in a document.
+
+    Args:
+        doc: SolidWorks document object
+        name: Feature name to find
+
+    Returns:
+        Feature object or None if not found
+    """
+    for feat in _iterate_features(doc):
+        try:
+            if feat.Name == name:
+                return feat
+        except Exception:
+            pass
+    return None
+
+
+def _get_feature_type(feat: Any) -> str:
+    """Get the type name of a feature, handling property/method ambiguity."""
+    try:
+        feat_type = feat.GetTypeName2
+        if callable(feat_type):
+            return feat_type()
+        return feat_type
+    except Exception:
+        return ""
+
+
 def list_sketches() -> list[dict]:
     """
     List all sketches in the active SolidWorks document.
@@ -106,44 +166,60 @@ def list_sketches() -> list[dict]:
 
     _init_com()
     try:
-        adapter = _get_adapter()
-        if adapter._document is None:
-            adapter._ensure_document()
+        from .adapter import get_solidworks_application
 
-        doc = adapter._document
+        app = get_solidworks_application()
+        doc = app.ActiveDoc
         if doc is None:
             return []
 
-        sketches = []
+        # Get feature count for iteration
         try:
-            # Iterate through features to find sketches
-            feat = doc.FirstFeature()
-            while feat is not None:
-                try:
-                    feat_type = feat.GetTypeName2()
-                    if feat_type == "ProfileFeature" or "Sketch" in feat.Name:
-                        sketch_obj = feat.GetSpecificFeature2()
+            fm = doc.FeatureManager
+            feature_count = fm.GetFeatureCount(True)
+        except Exception:
+            return []
+
+        sketches = []
+        # Use FeatureByPositionReverse with index since FirstFeature/GetNextFeature
+        # don't work with late-bound COM
+        for i in range(feature_count):
+            try:
+                feat = doc.FeatureByPositionReverse(i)
+                if feat is None:
+                    continue
+
+                feat_type = feat.GetTypeName2
+                if callable(feat_type):
+                    feat_type = feat_type()
+
+                feat_name = feat.Name
+
+                if feat_type == "ProfileFeature" or "Sketch" in feat_name:
+                    geom_count = 0
+                    try:
+                        # In late-bound COM, feat.GetSpecificFeature2 (without calling)
+                        # returns a wrapper with sketch methods
+                        sketch_obj = feat.GetSpecificFeature2
                         if sketch_obj is not None:
-                            geom_count = 0
-                            try:
-                                segments = sketch_obj.GetSketchSegments()
+                            segments = getattr(sketch_obj, "GetSketchSegments", None)
+                            if segments is not None:
+                                if callable(segments):
+                                    segments = segments()
                                 if segments:
                                     geom_count = len(segments)
-                            except Exception:
-                                pass
+                    except Exception:
+                        pass
 
-                            sketches.append(
-                                {
-                                    "name": feat.Name,
-                                    "feature_name": feat.Name,
-                                    "geometry_count": geom_count,
-                                }
-                            )
-                except Exception:
-                    pass
-                feat = feat.GetNextFeature()
-        except Exception:
-            pass
+                    sketches.append(
+                        {
+                            "name": feat_name,
+                            "feature_name": feat_name,
+                            "geometry_count": geom_count,
+                        }
+                    )
+            except Exception:
+                pass
 
         return sketches
     finally:
@@ -165,27 +241,33 @@ def export_sketch(sketch_name: str) -> str:
 
     _init_com()
     try:
-        adapter = _get_adapter()
-        if adapter._document is None:
-            adapter._ensure_document()
+        from .adapter import get_solidworks_application
 
-        doc = adapter._document
+        app = get_solidworks_application()
+        doc = app.ActiveDoc
         if doc is None:
             raise RuntimeError("No active document")
 
-        # Find the sketch by name
-        feat = doc.FirstFeature()
-        sketch_obj = None
-        while feat is not None:
-            if feat.Name == sketch_name:
-                sketch_obj = feat.GetSpecificFeature2()
+        # Find the sketch by iterating features directly
+        feat = None
+        fm = doc.FeatureManager
+        feature_count = fm.GetFeatureCount(True)
+        for i in range(feature_count):
+            f = doc.FeatureByPositionReverse(i)
+            if f is not None and f.Name == sketch_name:
+                feat = f
                 break
-            feat = feat.GetNextFeature()
 
-        if sketch_obj is None:
+        if feat is None:
             raise ValueError(f"Sketch '{sketch_name}' not found")
 
+        # In late-bound COM, accessing feat.GetSpecificFeature2 (without calling it)
+        # returns a CDispatch wrapper that provides access to sketch methods
+        sketch_obj = feat.GetSpecificFeature2
+
         # Set up the adapter with this sketch
+        adapter = _get_adapter()
+        adapter._document = doc
         adapter._sketch = sketch_obj
         adapter._sketch_manager = doc.SketchManager
 
@@ -209,6 +291,8 @@ def list_planes() -> list[dict]:
 
     _init_com()
     try:
+        from .adapter import get_solidworks_application
+
         # Standard reference planes always available
         planes = [
             {"id": "XY", "name": "Front Plane", "type": "construction"},
@@ -216,32 +300,24 @@ def list_planes() -> list[dict]:
             {"id": "YZ", "name": "Right Plane", "type": "construction"},
         ]
 
-        adapter = _get_adapter()
-        if adapter._document is None:
-            adapter._ensure_document()
-
-        doc = adapter._document
+        app = get_solidworks_application()
+        doc = app.ActiveDoc
         if doc:
-            try:
-                # Get reference planes from feature tree
-                feat = doc.FirstFeature()
-                while feat is not None:
-                    try:
-                        feat_type = feat.GetTypeName2()
-                        if feat_type == "RefPlane":
-                            # Skip the standard planes we already added
-                            name = feat.Name
-                            if name not in ("Front Plane", "Top Plane", "Right Plane"):
-                                planes.append({
-                                    "id": f"RefPlane:{name}",
-                                    "name": name,
-                                    "type": "reference",
-                                })
-                    except Exception:
-                        pass
-                    feat = feat.GetNextFeature()
-            except Exception:
-                pass
+            # Get reference planes from feature tree
+            for feat in _iterate_features(doc):
+                try:
+                    feat_type = _get_feature_type(feat)
+                    if feat_type == "RefPlane":
+                        # Skip the standard planes we already added
+                        name = feat.Name
+                        if name not in ("Front Plane", "Top Plane", "Right Plane"):
+                            planes.append({
+                                "id": f"RefPlane:{name}",
+                                "name": name,
+                                "type": "reference",
+                            })
+                except Exception:
+                    pass
 
         return planes
     finally:
@@ -270,6 +346,8 @@ def import_sketch(
 
     _init_com()
     try:
+        from .adapter import get_solidworks_application
+
         sketch_from_json = _get_sketch_from_json()
         sketch_doc = sketch_from_json(json_str)
 
@@ -284,22 +362,23 @@ def import_sketch(
             # Resolve reference plane
             try:
                 plane_name = plane.split(":", 1)[1]
-                doc = adapter._document
-                if doc is None:
-                    adapter._ensure_document()
-                    doc = adapter._document
+                app = get_solidworks_application()
+                doc = app.ActiveDoc
                 if doc:
-                    feat = doc.FirstFeature()
-                    while feat is not None:
-                        if feat.GetTypeName2() == "RefPlane" and feat.Name == plane_name:
+                    for feat in _iterate_features(doc):
+                        feat_type = _get_feature_type(feat)
+                        if feat_type == "RefPlane" and feat.Name == plane_name:
                             plane_to_use = feat
                             break
-                        feat = feat.GetNextFeature()
             except Exception:
                 plane_to_use = "XY"
 
         adapter.create_sketch(sketch_doc.name, plane=plane_to_use)
         adapter.load_sketch(sketch_doc)
+
+        # Exit sketch edit mode to commit the sketch
+        if adapter._sketch_manager is not None:
+            adapter._sketch_manager.InsertSketch(True)
 
         # Return the sketch name
         if adapter._sketch is not None:
@@ -327,26 +406,31 @@ def get_solver_status(sketch_name: str) -> dict:
 
     _init_com()
     try:
-        adapter = _get_adapter()
-        if adapter._document is None:
-            adapter._ensure_document()
+        from .adapter import get_solidworks_application
 
-        doc = adapter._document
+        app = get_solidworks_application()
+        doc = app.ActiveDoc
         if doc is None:
             raise RuntimeError("No active document")
 
-        # Find the sketch by name
-        feat = doc.FirstFeature()
-        sketch_obj = None
-        while feat is not None:
-            if feat.Name == sketch_name:
-                sketch_obj = feat.GetSpecificFeature2()
+        # Find the sketch by iterating features directly
+        feat = None
+        fm = doc.FeatureManager
+        feature_count = fm.GetFeatureCount(True)
+        for i in range(feature_count):
+            f = doc.FeatureByPositionReverse(i)
+            if f is not None and f.Name == sketch_name:
+                feat = f
                 break
-            feat = feat.GetNextFeature()
 
-        if sketch_obj is None:
+        if feat is None:
             raise ValueError(f"Sketch '{sketch_name}' not found")
 
+        # In late-bound COM, feat.GetSpecificFeature2 (without calling) provides sketch access
+        sketch_obj = feat.GetSpecificFeature2
+
+        adapter = _get_adapter()
+        adapter._document = doc
         adapter._sketch = sketch_obj
         status, dof = adapter.get_solver_status()
         return {"status": status.name, "dof": dof}
@@ -391,17 +475,16 @@ def get_status() -> dict:
                     result["active_document"] = path or title
                 except Exception:
                     result["active_document"] = "unknown"
-                # Count sketches
+                # Count sketches using the helper function
                 sketch_count = 0
-                try:
-                    feat = doc.FirstFeature()
-                    while feat is not None:
-                        feat_type = feat.GetTypeName2()
-                        if feat_type == "ProfileFeature" or "Sketch" in feat.Name:
+                for feat in _iterate_features(doc):
+                    try:
+                        feat_type = _get_feature_type(feat)
+                        feat_name = feat.Name
+                        if feat_type == "ProfileFeature" or "Sketch" in feat_name:
                             sketch_count += 1
-                        feat = feat.GetNextFeature()
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
                 result["sketch_count"] = sketch_count
             else:
                 result["active_document"] = None
@@ -446,26 +529,29 @@ def open_sketch_in_edit_mode(sketch_name: str) -> bool:
 
     _init_com()
     try:
-        adapter = _get_adapter()
-        if adapter._document is None:
-            adapter._ensure_document()
+        from .adapter import get_solidworks_application
 
-        doc = adapter._document
+        app = get_solidworks_application()
+        doc = app.ActiveDoc
         if doc is None:
             raise RuntimeError("No active document")
 
-        # Find and select the sketch
-        feat = doc.FirstFeature()
-        while feat is not None:
-            if feat.Name == sketch_name:
-                # Select the feature
-                feat.Select2(False, 0)
-                # Edit the sketch
-                doc.EditSketch()
-                return True
-            feat = feat.GetNextFeature()
+        # Find the sketch by name
+        feat = _find_feature_by_name(doc, sketch_name)
+        if feat is None:
+            raise ValueError(f"Sketch '{sketch_name}' not found")
 
-        raise ValueError(f"Sketch '{sketch_name}' not found")
+        # Select the feature
+        select_method = feat.Select2
+        if callable(select_method):
+            select_method(False, 0)
+
+        # Edit the sketch
+        edit_method = doc.EditSketch
+        if callable(edit_method):
+            edit_method()
+
+        return True
     finally:
         _uninit_com()
 

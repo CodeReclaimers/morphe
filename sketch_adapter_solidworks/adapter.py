@@ -325,14 +325,19 @@ class SolidWorksAdapter(SketchBackendAdapter):
                     plane_feature.Select2(False, 0)
                 else:
                     # Fallback: try selecting via feature manager tree traversal
-                    feat = model.FirstFeature()
-                    while feat is not None:
-                        feat_name = feat.Name
-                        if feat_name == plane_name:
-                            plane_feature = feat
-                            plane_feature.Select2(False, 0)
-                            break
-                        feat = feat.GetNextFeature()
+                    # Use FeatureByPositionReverse since FirstFeature/GetNextFeature
+                    # don't work with late-bound COM
+                    try:
+                        fm = model.FeatureManager
+                        feature_count = fm.GetFeatureCount(True)
+                        for i in range(feature_count):
+                            feat = model.FeatureByPositionReverse(i)
+                            if feat is not None and feat.Name == plane_name:
+                                plane_feature = feat
+                                plane_feature.Select2(False, 0)
+                                break
+                    except Exception:
+                        pass
             else:
                 # Assume it's a plane object - select it
                 plane.Select(False)
@@ -515,16 +520,23 @@ class SolidWorksAdapter(SketchBackendAdapter):
         In win32com late binding, some methods are exposed as properties
         that return tuples instead of callable methods.
         """
-        attr = getattr(obj, attr_name, None)
+        try:
+            attr = getattr(obj, attr_name, None)
+        except Exception:
+            return None
         if attr is None:
             return None
         # If it's callable (a method), call it
         if callable(attr):
             try:
                 return attr()
-            except TypeError:
+            except (TypeError, Exception):
                 # If calling fails, it might be a property that looks callable
-                return attr
+                # or a COM error - try returning the attribute itself
+                try:
+                    return attr
+                except Exception:
+                    return None
         else:
             # It's a property, return its value directly
             return attr

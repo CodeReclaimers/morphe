@@ -8,6 +8,7 @@ uses millimeters. This adapter handles the conversion automatically.
 """
 
 import math
+import uuid
 from typing import Any
 
 from sketch_canonical.adapter import (
@@ -1389,12 +1390,17 @@ class FusionAdapter(SketchBackendAdapter):
 
         return PointRef(element_id, PointType.CENTER)
 
+    def _generate_constraint_id(self) -> str:
+        """Generate a unique constraint ID."""
+        return f"C_{uuid.uuid4().hex[:8]}"
+
     def _convert_horizontal(self, constraint) -> SketchConstraint | None:
         """Convert a horizontal constraint."""
         entity = constraint.line
         entity_id = self._get_id_for_entity(entity)
         if entity_id:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.HORIZONTAL,
                 references=[entity_id]
             )
@@ -1406,6 +1412,7 @@ class FusionAdapter(SketchBackendAdapter):
         entity_id = self._get_id_for_entity(entity)
         if entity_id:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.VERTICAL,
                 references=[entity_id]
             )
@@ -1419,6 +1426,7 @@ class FusionAdapter(SketchBackendAdapter):
         id2 = self._get_id_for_entity(line2)
         if id1 and id2:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.PARALLEL,
                 references=[id1, id2]
             )
@@ -1432,6 +1440,7 @@ class FusionAdapter(SketchBackendAdapter):
         id2 = self._get_id_for_entity(line2)
         if id1 and id2:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.PERPENDICULAR,
                 references=[id1, id2]
             )
@@ -1445,6 +1454,7 @@ class FusionAdapter(SketchBackendAdapter):
         id2 = self._get_id_for_entity(curve2)
         if id1 and id2:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.TANGENT,
                 references=[id1, id2]
             )
@@ -1458,6 +1468,7 @@ class FusionAdapter(SketchBackendAdapter):
         id2 = self._get_id_for_entity(curve2)
         if id1 and id2:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.EQUAL,
                 references=[id1, id2]
             )
@@ -1471,6 +1482,7 @@ class FusionAdapter(SketchBackendAdapter):
         id2 = self._get_id_for_entity(entity2)
         if id1 and id2:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.CONCENTRIC,
                 references=[id1, id2]
             )
@@ -1484,6 +1496,7 @@ class FusionAdapter(SketchBackendAdapter):
         id2 = self._get_id_for_entity(line2)
         if id1 and id2:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.COLLINEAR,
                 references=[id1, id2]
             )
@@ -1495,6 +1508,7 @@ class FusionAdapter(SketchBackendAdapter):
         entity_id = self._get_id_for_entity(entity)
         if entity_id:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.FIXED,
                 references=[entity_id]
             )
@@ -1510,6 +1524,7 @@ class FusionAdapter(SketchBackendAdapter):
         line_id = self._get_id_for_entity(line)
         if id1 and id2 and line_id:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.SYMMETRIC,
                 references=[id1, id2, line_id]
             )
@@ -1524,6 +1539,7 @@ class FusionAdapter(SketchBackendAdapter):
         if point_id and line_id:
             ref = self._point_to_ref(point, point_id)
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.MIDPOINT,
                 references=[ref, line_id]
             )
@@ -1556,6 +1572,8 @@ class FusionAdapter(SketchBackendAdapter):
                 return self._convert_diameter_dimension(dim, value_mm)
             elif "SketchAngularDimension" in obj_type:
                 return self._convert_angular_dimension(dim)
+            elif "SketchOffsetDimension" in obj_type:
+                return self._convert_offset_dimension(dim, value_mm)
             else:
                 return None
         except Exception:
@@ -1580,18 +1598,21 @@ class FusionAdapter(SketchBackendAdapter):
                 # Check orientation for X/Y constraints
                 if orientation == self._adsk_fusion.DimensionOrientations.HorizontalDimensionOrientation:
                     return SketchConstraint(
+                        id=self._generate_constraint_id(),
                         constraint_type=ConstraintType.DISTANCE_X,
                         references=[ref1, ref2],
                         value=value
                     )
                 elif orientation == self._adsk_fusion.DimensionOrientations.VerticalDimensionOrientation:
                     return SketchConstraint(
+                        id=self._generate_constraint_id(),
                         constraint_type=ConstraintType.DISTANCE_Y,
                         references=[ref1, ref2],
                         value=value
                     )
                 else:
                     return SketchConstraint(
+                        id=self._generate_constraint_id(),
                         constraint_type=ConstraintType.DISTANCE,
                         references=[ref1, ref2],
                         value=value
@@ -1601,6 +1622,7 @@ class FusionAdapter(SketchBackendAdapter):
             entity_id = self._get_id_for_entity(entity1)
             if entity_id:
                 return SketchConstraint(
+                    id=self._generate_constraint_id(),
                     constraint_type=ConstraintType.LENGTH,
                     references=[entity_id],
                     value=value
@@ -1614,6 +1636,7 @@ class FusionAdapter(SketchBackendAdapter):
         entity_id = self._get_id_for_entity(entity)
         if entity_id:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.RADIUS,
                 references=[entity_id],
                 value=value
@@ -1626,6 +1649,7 @@ class FusionAdapter(SketchBackendAdapter):
         entity_id = self._get_id_for_entity(entity)
         if entity_id:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.DIAMETER,
                 references=[entity_id],
                 value=value
@@ -1645,8 +1669,46 @@ class FusionAdapter(SketchBackendAdapter):
 
         if id1 and id2:
             return SketchConstraint(
+                id=self._generate_constraint_id(),
                 constraint_type=ConstraintType.ANGLE,
                 references=[id1, id2],
                 value=value_deg
             )
+        return None
+
+    def _convert_offset_dimension(self, dim, value: float) -> SketchConstraint | None:
+        """Convert an offset dimension constraint (distance from origin to line)."""
+        # SketchOffsetDimension uses .line property, not .entity
+        entity = dim.line
+        entity_id = self._get_id_for_entity(entity)
+
+        if entity_id:
+            # Offset dimensions are typically from origin to a line
+            # Use the isHorizontal property to determine constraint type
+            try:
+                is_horizontal = dim.isHorizontal
+                if is_horizontal:
+                    # Horizontal offset means vertical distance (Y constraint)
+                    return SketchConstraint(
+                        id=self._generate_constraint_id(),
+                        constraint_type=ConstraintType.DISTANCE_Y,
+                        references=[entity_id],
+                        value=value
+                    )
+                else:
+                    # Vertical offset means horizontal distance (X constraint)
+                    return SketchConstraint(
+                        id=self._generate_constraint_id(),
+                        constraint_type=ConstraintType.DISTANCE_X,
+                        references=[entity_id],
+                        value=value
+                    )
+            except AttributeError:
+                # If isHorizontal not available, use generic distance
+                return SketchConstraint(
+                    id=self._generate_constraint_id(),
+                    constraint_type=ConstraintType.DISTANCE,
+                    references=[entity_id],
+                    value=value
+                )
         return None

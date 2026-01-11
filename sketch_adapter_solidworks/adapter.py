@@ -54,23 +54,32 @@ except ImportError:
     win32com = None  # type: ignore[assignment]
 
 
-# SolidWorks constraint type constants (from swConstraintType_e)
+# SolidWorks sketch constraint type constants (from swConstraintType_e)
+# Reference: https://help.solidworks.com/2024/english/api/swconst/swConstraintType_e.html
 class SwConstraintType:
-    """SolidWorks constraint type enumeration values."""
+    """SolidWorks swConstraintType_e enumeration values."""
 
-    COINCIDENT = 3
-    CONCENTRIC = 4
-    TANGENT = 5
-    HORIZONTAL = 6
-    VERTICAL = 7
-    PERPENDICULAR = 8
-    PARALLEL = 9
-    EQUAL = 10
-    FIX = 11
-    MIDPOINT = 12
-    SYMMETRIC = 13
-    COLLINEAR = 14
-    CORADIAL = 15
+    # Geometric constraints
+    HORIZONTAL = 4          # swConstraintType_HORIZONTAL
+    VERTICAL = 5            # swConstraintType_VERTICAL
+    TANGENT = 6             # swConstraintType_TANGENT
+    PARALLEL = 7            # swConstraintType_PARALLEL
+    PERPENDICULAR = 8       # swConstraintType_PERPENDICULAR
+    COINCIDENT = 9          # swConstraintType_COINCIDENT
+    CONCENTRIC = 10         # swConstraintType_CONCENTRIC
+    SYMMETRIC = 11          # swConstraintType_SYMMETRIC
+    MIDPOINT = 12           # swConstraintType_ATMIDDLE
+    ATINTERSECT = 13        # swConstraintType_ATINTERSECT
+    EQUAL = 14              # swConstraintType_SAMELENGTH
+    FIX = 17                # swConstraintType_FIXED
+    COLLINEAR = 27          # swConstraintType_COLINEAR
+    CORADIAL = 28           # swConstraintType_CORADIAL
+
+    # Dimensional constraints (for reference - accessed differently)
+    DISTANCE = 1            # swConstraintType_DISTANCE
+    ANGLE = 2               # swConstraintType_ANGLE
+    RADIUS = 3              # swConstraintType_RADIUS
+    DIAMETER = 15           # swConstraintType_DIAMETER
 
 
 # SolidWorks sketch segment type constants
@@ -177,6 +186,10 @@ class SolidWorksAdapter(SketchBackendAdapter):
         self._constraints_applied: bool = False
         # Track standalone Point primitive IDs (to preserve during export)
         self._standalone_point_ids: set[str] = set()
+        # Property-based mappings for constraint entity matching
+        # (COM returns different wrapper objects, so id() matching doesn't work)
+        self._length_to_id: dict[float, str] = {}
+        self._radius_to_id: dict[float, str] = {}
 
     def _disable_dimension_dialog(self) -> None:
         """Disable the dimension input dialog that blocks automation.
@@ -428,6 +441,11 @@ class SolidWorksAdapter(SketchBackendAdapter):
             # Pre-compute segment-to-points matching for lines with same length
             self._used_point_pairs: set[tuple[tuple[float, float], tuple[float, float]]] = set()
 
+            # Build a property-based mapping for matching entities from relations
+            # COM returns different wrapper objects, so we can't use id() for matching
+            self._length_to_id: dict[float, str] = {}
+            self._radius_to_id: dict[float, str] = {}
+
             # Get all sketch segments
             # Note: In COM late binding, GetSketchSegments may be a property returning
             # a tuple rather than a callable method
@@ -444,6 +462,23 @@ class SolidWorksAdapter(SketchBackendAdapter):
                         doc.add_primitive(prim)
                         self._entity_to_id[id(segment)] = prim.id
                         self._id_to_entity[prim.id] = segment
+
+                        # Build property-based mappings for constraint entity matching
+                        try:
+                            length = segment.GetLength
+                            if length is not None:
+                                # Round to avoid floating point matching issues
+                                length_key = round(length, 10)
+                                self._length_to_id[length_key] = prim.id
+                        except Exception:
+                            pass
+                        try:
+                            radius = segment.GetRadius
+                            if radius is not None:
+                                radius_key = round(radius, 10)
+                                self._radius_to_id[radius_key] = prim.id
+                        except Exception:
+                            pass
 
                         # Track coordinates used by this primitive
                         if isinstance(prim, Line):
@@ -2066,40 +2101,122 @@ class SolidWorksAdapter(SketchBackendAdapter):
         )
 
     def _export_constraints(self, doc: SketchDocument) -> None:
-        """Export constraints from SolidWorks sketch."""
+        """Export constraints from SolidWorks sketch.
+
+        In late-bound COM, GetSketchRelations() on the sketch doesn't work.
+        Instead, we iterate through segments and get relations from each segment.
+        """
         if self._sketch is None:
             return
 
+        # Track seen relations by their entities to avoid duplicates
+        # (same relation appears on multiple segments it connects)
+        seen_relations: set[tuple] = set()
+
         try:
-            # Get sketch relations
-            relations = self._sketch.GetSketchRelations()
-            if relations:
-                for relation in relations:
-                    canonical = self._convert_relation(relation)
-                    if canonical is not None:
-                        doc.constraints.append(canonical)
+            # Get all segments
+            segments = self._get_com_result(self._sketch, "GetSketchSegments")
+            if not segments:
+                return
+
+            for segment in segments:
+                try:
+                    # Get the ID of this segment for including in references
+                    segment_id = self._get_entity_id_by_properties(segment)
+
+                    # Get relations for this segment
+                    relations = segment.GetRelations
+                    if callable(relations):
+                        relations = relations()
+
+                    if not relations:
+                        continue
+
+                    for relation in relations:
+                        # Get relation type
+                        rel_type = relation.GetRelationType
+                        if callable(rel_type):
+                            rel_type = rel_type()
+
+                        # Get entities count for deduplication key
+                        entities_count = relation.GetEntitiesCount
+                        if callable(entities_count):
+                            entities_count = entities_count()
+
+                        # Create a key to deduplicate relations
+                        # Use type + entity count as rough key
+                        simple_key = (rel_type, entities_count)
+                        if simple_key in seen_relations:
+                            # Skip duplicate
+                            continue
+
+                        seen_relations.add(simple_key)
+
+                        canonical = self._convert_relation(relation, segment_id)
+                        if canonical is not None:
+                            doc.constraints.append(canonical)
+
+                except Exception:
+                    continue
+
         except Exception:
             pass
 
-    def _convert_relation(self, relation: Any) -> SketchConstraint | None:
-        """Convert a SolidWorks sketch relation to canonical constraint."""
+    def _get_entity_id_by_properties(self, entity: Any) -> str | None:
+        """Get entity ID by matching geometric properties (length, radius)."""
+        # Try matching by length
         try:
-            rel_type = relation.GetRelationType()
+            length = entity.GetLength
+            if length is not None:
+                length_key = round(length, 10)
+                entity_id = self._length_to_id.get(length_key)
+                if entity_id:
+                    return entity_id
+        except Exception:
+            pass
+
+        # Try matching by radius
+        try:
+            radius = entity.GetRadius
+            if radius is not None:
+                radius_key = round(radius, 10)
+                entity_id = self._radius_to_id.get(radius_key)
+                if entity_id:
+                    return entity_id
+        except Exception:
+            pass
+
+        return None
+
+    def _convert_relation(self, relation: Any, source_segment_id: str | None = None) -> SketchConstraint | None:
+        """Convert a SolidWorks sketch relation to canonical constraint.
+
+        Args:
+            relation: The SolidWorks relation object
+            source_segment_id: ID of the segment we found this relation on (for reference)
+        """
+        try:
+            # Handle property/method access for late-bound COM
+            rel_type = relation.GetRelationType
+            if callable(rel_type):
+                rel_type = rel_type()
 
             # Map SolidWorks relation types to canonical
+            # Reference: swConstraintType_e from SolidWorks 2024 API
             type_map = {
-                SwConstraintType.HORIZONTAL: ConstraintType.HORIZONTAL,
-                SwConstraintType.VERTICAL: ConstraintType.VERTICAL,
-                SwConstraintType.COINCIDENT: ConstraintType.COINCIDENT,
-                SwConstraintType.TANGENT: ConstraintType.TANGENT,
-                SwConstraintType.PERPENDICULAR: ConstraintType.PERPENDICULAR,
-                SwConstraintType.PARALLEL: ConstraintType.PARALLEL,
-                SwConstraintType.EQUAL: ConstraintType.EQUAL,
-                SwConstraintType.CONCENTRIC: ConstraintType.CONCENTRIC,
-                SwConstraintType.COLLINEAR: ConstraintType.COLLINEAR,
-                SwConstraintType.FIX: ConstraintType.FIXED,
-                SwConstraintType.MIDPOINT: ConstraintType.MIDPOINT,
-                SwConstraintType.SYMMETRIC: ConstraintType.SYMMETRIC,
+                SwConstraintType.HORIZONTAL: ConstraintType.HORIZONTAL,        # 4
+                SwConstraintType.VERTICAL: ConstraintType.VERTICAL,            # 5
+                SwConstraintType.TANGENT: ConstraintType.TANGENT,              # 6
+                SwConstraintType.PARALLEL: ConstraintType.PARALLEL,            # 7
+                SwConstraintType.PERPENDICULAR: ConstraintType.PERPENDICULAR,  # 8
+                SwConstraintType.COINCIDENT: ConstraintType.COINCIDENT,        # 9
+                SwConstraintType.CONCENTRIC: ConstraintType.CONCENTRIC,        # 10
+                SwConstraintType.SYMMETRIC: ConstraintType.SYMMETRIC,          # 11
+                SwConstraintType.MIDPOINT: ConstraintType.MIDPOINT,            # 12
+                SwConstraintType.EQUAL: ConstraintType.EQUAL,                  # 14
+                SwConstraintType.FIX: ConstraintType.FIXED,                    # 17
+                SwConstraintType.COLLINEAR: ConstraintType.COLLINEAR,          # 27
+                SwConstraintType.CORADIAL: ConstraintType.EQUAL,               # 28 - equal radius
             }
 
             if rel_type not in type_map:
@@ -2107,14 +2224,45 @@ class SolidWorksAdapter(SketchBackendAdapter):
 
             ctype = type_map[rel_type]
 
-            # Get entities involved
-            entities = relation.GetEntities()
+            # Get entities involved - handle property/method access
+            entities = relation.GetEntities
+            if callable(entities):
+                entities = entities()
+
             refs: list[str | PointRef] = []
             if entities:
                 for entity in entities:
+                    # First try direct id() match (might work if same COM context)
                     entity_id = self._entity_to_id.get(id(entity))
+
+                    # If that fails, try property-based matching
+                    if not entity_id:
+                        # Try matching by length
+                        try:
+                            length = entity.GetLength
+                            if length is not None:
+                                length_key = round(length, 10)
+                                entity_id = self._length_to_id.get(length_key)
+                        except Exception:
+                            pass
+
+                    if not entity_id:
+                        # Try matching by radius
+                        try:
+                            radius = entity.GetRadius
+                            if radius is not None:
+                                radius_key = round(radius, 10)
+                                entity_id = self._radius_to_id.get(radius_key)
+                        except Exception:
+                            pass
+
                     if entity_id:
                         refs.append(entity_id)
+
+            # If we have the source segment and it's not already in refs, add it
+            # This handles cases where GetEntities doesn't return all involved entities
+            if source_segment_id and source_segment_id not in refs:
+                refs.append(source_segment_id)
 
             if not refs:
                 return None
@@ -2168,10 +2316,9 @@ class SolidWorksAdapter(SketchBackendAdapter):
         # by counting relations vs geometry DOF
         if status_val is None:
             try:
-                # Get geometry and relations
+                # Get geometry
                 segments = self._get_com_result(self._sketch, "GetSketchSegments")
                 points = self._get_com_result(self._sketch, "GetSketchPoints2")
-                relations = self._get_com_result(self._sketch, "GetSketchRelations")
 
                 # Count DOF from geometry
                 geom_dof = 0
@@ -2186,11 +2333,29 @@ class SolidWorksAdapter(SketchBackendAdapter):
                     # Standalone points
                     geom_dof += len(points) * 2
 
-                # Count constraints
+                # Count constraints by iterating segments (GetSketchRelations doesn't work)
                 constraint_dof = 0
-                if relations:
-                    for _rel in relations:
-                        constraint_dof += 1  # Simplified - each relation removes 1 DOF
+                if segments:
+                    seen_relations: set[tuple] = set()
+                    for seg in segments:
+                        try:
+                            relations = seg.GetRelations
+                            if callable(relations):
+                                relations = relations()
+                            if relations:
+                                for rel in relations:
+                                    rel_type = rel.GetRelationType
+                                    if callable(rel_type):
+                                        rel_type = rel_type()
+                                    entities_count = rel.GetEntitiesCount
+                                    if callable(entities_count):
+                                        entities_count = entities_count()
+                                    key = (rel_type, entities_count)
+                                    if key not in seen_relations:
+                                        seen_relations.add(key)
+                                        constraint_dof += 1
+                        except Exception:
+                            continue
 
                 # Estimate status
                 remaining_dof = max(0, geom_dof - constraint_dof)
@@ -2231,25 +2396,45 @@ class SolidWorksAdapter(SketchBackendAdapter):
             sketch = self._sketch
             dof = 0
 
-            # Count geometry
-            segments = sketch.GetSketchSegments()
+            # Count geometry - handle property/method access for late-bound COM
+            segments = self._get_com_result(sketch, "GetSketchSegments")
             if segments:
                 for segment in segments:
-                    seg_type = segment.GetType()
+                    seg_type = self._get_com_result(segment, "GetType")
                     if seg_type == SwSketchSegments.LINE:
                         dof += 4  # 2 points x 2 coords
                     elif seg_type == SwSketchSegments.ARC:
                         dof += 5  # center + radius + 2 angles
                     elif seg_type == SwSketchSegments.SPLINE:
-                        points = segment.GetPoints2()
+                        points = self._get_com_result(segment, "GetPoints2")
                         if points:
                             dof += (len(points) // 3) * 2
 
-            # Subtract for relations
-            relations = sketch.GetSketchRelations()
-            if relations:
-                dof -= len(relations)
+            # Subtract for relations - iterate segments since GetSketchRelations doesn't work
+            relation_count = 0
+            if segments:
+                seen_relations: set[tuple] = set()
+                for segment in segments:
+                    try:
+                        relations = segment.GetRelations
+                        if callable(relations):
+                            relations = relations()
+                        if relations:
+                            for rel in relations:
+                                rel_type = rel.GetRelationType
+                                if callable(rel_type):
+                                    rel_type = rel_type()
+                                entities_count = rel.GetEntitiesCount
+                                if callable(entities_count):
+                                    entities_count = entities_count()
+                                key = (rel_type, entities_count)
+                                if key not in seen_relations:
+                                    seen_relations.add(key)
+                                    relation_count += 1
+                    except Exception:
+                        continue
 
+            dof -= relation_count
             return max(0, dof)
 
         except Exception:

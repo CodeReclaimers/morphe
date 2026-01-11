@@ -153,6 +153,196 @@ def _get_feature_type(feat: Any) -> str:
         return ""
 
 
+def probe_constraints(sketch_name: str) -> dict:
+    """Probe a sketch to find how to access constraints.
+
+    DEBUG FUNCTION: This can be removed once constraint export is stable.
+    It's useful for discovering how SolidWorks exposes constraint/relation
+    data via late-bound COM.
+    """
+    if not SOLIDWORKS_AVAILABLE:
+        raise RuntimeError("SolidWorks is not available")
+
+    _init_com()
+    try:
+        from .adapter import get_solidworks_application
+
+        app = get_solidworks_application()
+        doc = app.ActiveDoc
+        if doc is None:
+            return {"error": "No active document"}
+
+        result = {}
+
+        # Find the sketch
+        feat = None
+        fm = doc.FeatureManager
+        feature_count = fm.GetFeatureCount(True)
+        for i in range(feature_count):
+            f = doc.FeatureByPositionReverse(i)
+            if f is not None and f.Name == sketch_name:
+                feat = f
+                break
+
+        if feat is None:
+            return {"error": f"Feature '{sketch_name}' not found"}
+
+        sketch_obj = feat.GetSpecificFeature2
+        result["sketch_obj_type"] = type(sketch_obj).__name__
+
+        # Get all segments and build a mapping by length
+        segments = sketch_obj.GetSketchSegments
+        if callable(segments):
+            segments = segments()
+
+        if not segments:
+            return {"error": "No segments found"}
+
+        result["segment_count"] = len(segments)
+
+        # Store segment info with length-based matching
+        segment_info = []
+        length_to_seg = {}  # Map length -> segment index
+        for i, seg in enumerate(segments):
+            info = {"index": i}
+            try:
+                length = seg.GetLength
+                info["length"] = round(length, 10)
+                length_to_seg[round(length, 10)] = i
+            except Exception:
+                pass
+            segment_info.append(info)
+        result["segments"] = segment_info
+
+        # Get ALL relations from ALL segments (before dedup)
+        all_relations = []
+        for i, seg in enumerate(segments):
+            try:
+                relations = seg.GetRelations
+                if callable(relations):
+                    relations = relations()
+
+                if relations and len(relations) > 0:
+                    for j, rel in enumerate(relations):
+                        rel_info = {
+                            "from_segment": i,
+                            "rel_index": j,
+                        }
+
+                        # Get relation type
+                        rel_type = rel.GetRelationType
+                        if callable(rel_type):
+                            rel_type = rel_type()
+                        rel_info["rel_type"] = rel_type
+
+                        # Get entities and match by length
+                        entities = rel.GetEntities
+                        if callable(entities):
+                            entities = entities()
+
+                        if entities:
+                            rel_info["entity_count"] = len(entities)
+                            matched_segments = []
+                            for ent in entities:
+                                try:
+                                    ent_length = round(ent.GetLength, 10)
+                                    if ent_length in length_to_seg:
+                                        matched_segments.append(length_to_seg[ent_length])
+                                except Exception:
+                                    pass
+                            rel_info["matched_segments"] = matched_segments
+
+                        # Probe for dimension-related attributes on the relation
+                        dim_attrs = ["Value", "GetValue", "Dimension", "GetDimension",
+                                     "Parameter", "GetParameter", "Definition", "GetDefinition",
+                                     "DisplayDimension", "GetDisplayDimension"]
+                        for attr in dim_attrs:
+                            try:
+                                val = getattr(rel, attr, None)
+                                if val is not None:
+                                    if callable(val):
+                                        try:
+                                            val = val()
+                                        except TypeError:
+                                            # Might need arguments
+                                            try:
+                                                val = val(0)
+                                            except Exception:
+                                                pass
+                                    if val is not None:
+                                        rel_info[attr] = str(val)[:50]
+                            except Exception:
+                                pass
+
+                        all_relations.append(rel_info)
+            except Exception as e:
+                result[f"seg{i}_error"] = str(e)[:50]
+
+        result["relations"] = all_relations
+        result["total_relations"] = len(all_relations)
+
+        # Also probe for dimensions (dimensional constraints)
+        dim_info = []
+
+        # Try getting dimensions from the feature (not the sketch object)
+        try:
+            feat_dims = feat.GetDisplayDimensions
+            if callable(feat_dims):
+                feat_dims = feat_dims()
+            if feat_dims:
+                result["feature_dims_count"] = len(feat_dims) if hasattr(feat_dims, '__len__') else 1
+                dims_to_probe = feat_dims if hasattr(feat_dims, '__iter__') else [feat_dims]
+                for dim in dims_to_probe:
+                    dim_detail = {"source": "feature", "type": type(dim).__name__}
+                    for prop in ["Value", "GetValue", "Name", "GetName", "FullName",
+                                 "Type", "GetType", "DimensionValue"]:
+                        try:
+                            val = getattr(dim, prop, None)
+                            if val is not None:
+                                if callable(val):
+                                    val = val()
+                                dim_detail[prop] = str(val)[:50]
+                        except Exception:
+                            pass
+                    # Try to get the dimension object from DisplayDimension
+                    try:
+                        dim_obj = dim.GetDimension2
+                        if callable(dim_obj):
+                            dim_obj = dim_obj(0)  # 0 = primary value
+                        if dim_obj:
+                            dim_detail["dim_obj_type"] = type(dim_obj).__name__
+                            try:
+                                dim_detail["dim_value"] = dim_obj.Value
+                            except Exception:
+                                pass
+                            try:
+                                dim_detail["dim_name"] = dim_obj.FullName
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    dim_info.append(dim_detail)
+        except Exception as e:
+            result["feature_dims_error"] = str(e)[:50]
+
+        # Try getting dimensions from the document
+        try:
+            doc_dims = doc.GetDisplayDimensions
+            if callable(doc_dims):
+                doc_dims = doc_dims()
+            if doc_dims:
+                result["doc_dims_count"] = len(doc_dims) if hasattr(doc_dims, '__len__') else "exists"
+        except Exception as e:
+            result["doc_dims_error"] = str(e)[:50]
+
+        if dim_info:
+            result["dimensions"] = dim_info
+
+        return result
+    finally:
+        _uninit_com()
+
+
 def list_sketches() -> list[dict]:
     """
     List all sketches in the active SolidWorks document.
@@ -593,6 +783,7 @@ def start_server(
     _server.register_function(get_status, "get_status")
     _server.register_function(ping, "ping")
     _server.register_function(open_sketch_in_edit_mode, "open_sketch_in_sketcher")
+    _server.register_function(probe_constraints, "probe_constraints")
 
     print(f"SolidWorks sketch server started on {host}:{port}")
 

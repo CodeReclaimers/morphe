@@ -618,6 +618,170 @@ def open_sketch_in_edit_mode(sketch_name: str) -> bool:
     return _execute_on_main_thread(do_open)
 
 
+def probe_constraints(sketch_name: str) -> dict:
+    """Probe a sketch to find what constraints exist.
+
+    DEBUG FUNCTION: This can be removed once constraint export is stable.
+    """
+    if not FUSION_AVAILABLE:
+        raise RuntimeError("Fusion 360 is not available")
+
+    def do_probe() -> dict:
+        app = adsk.core.Application.get()
+        if not app:
+            return {"error": "Could not get Fusion 360 application"}
+
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return {"error": "No active design"}
+
+        # Find the sketch
+        root_comp = design.rootComponent
+        sketch_obj = None
+        for i in range(root_comp.sketches.count):
+            sketch = root_comp.sketches.item(i)
+            if sketch.name == sketch_name:
+                sketch_obj = sketch
+                break
+
+        if sketch_obj is None:
+            return {"error": f"Sketch '{sketch_name}' not found"}
+
+        result = {"sketch_name": sketch_name}
+
+        # Count geometric constraints
+        try:
+            geo_constraints = sketch_obj.geometricConstraints
+            result["geometric_constraint_count"] = geo_constraints.count
+
+            # List constraint types
+            constraint_types = []
+            for i in range(geo_constraints.count):
+                c = geo_constraints.item(i)
+                constraint_types.append(c.objectType)
+            result["geometric_constraints"] = constraint_types[:20]  # Limit
+        except Exception as e:
+            result["geometric_error"] = str(e)
+
+        # Count sketch dimensions (dimensional constraints)
+        try:
+            dimensions = sketch_obj.sketchDimensions
+            result["dimension_count"] = dimensions.count
+
+            dim_types = []
+            for i in range(dimensions.count):
+                d = dimensions.item(i)
+                dim_types.append(d.objectType)
+            result["dimensions"] = dim_types[:20]
+        except Exception as e:
+            result["dimension_error"] = str(e)
+
+        # Check entity mapping - do a full export to populate mappings
+        try:
+            adapter = _get_adapter()
+            adapter._sketch = sketch_obj
+
+            # Do the export to populate entity mappings
+            exported = adapter.export_sketch()
+
+            result["entity_to_id_count"] = len(adapter._entity_to_id)
+            result["exported_primitive_count"] = len(exported.primitives)
+            result["exported_constraint_count"] = len(exported.constraints)
+
+            # Check if constraint entities can be found
+            geo_constraints = sketch_obj.geometricConstraints
+            constraint_entity_check = []
+            for i in range(min(geo_constraints.count, 5)):
+                c = geo_constraints.item(i)
+                obj_type = c.objectType
+
+                check = {"type": obj_type.split("::")[-1]}
+
+                # Try to get the entity and its token
+                if "HorizontalConstraint" in obj_type or "VerticalConstraint" in obj_type:
+                    try:
+                        line = c.line
+                        token = line.entityToken
+                        check["entity_token"] = token[:50] if token else "None"
+                        check["found_in_mapping"] = token in adapter._entity_to_id
+                    except Exception as e:
+                        check["error"] = str(e)[:50]
+
+                constraint_entity_check.append(check)
+
+            result["constraint_entity_check"] = constraint_entity_check
+
+            # Try to manually convert a constraint to see what fails
+            if geo_constraints.count > 0:
+                c = geo_constraints.item(0)
+
+                # Check if _get_id_for_entity works
+                try:
+                    line = c.line
+                    entity_id = adapter._get_id_for_entity(line)
+                    result["get_id_result"] = entity_id if entity_id else "None returned"
+                except Exception as e:
+                    result["get_id_error"] = str(e)
+
+                # Try direct horizontal conversion
+                try:
+                    from sketch_canonical import SketchConstraint, ConstraintType
+                    line = c.line
+                    entity_id = adapter._get_id_for_entity(line)
+                    result["direct_entity_id"] = entity_id
+                    if entity_id:
+                        sc = SketchConstraint(
+                            constraint_type=ConstraintType.HORIZONTAL,
+                            references=[entity_id]
+                        )
+                        result["direct_constraint"] = str(sc)
+                except Exception as e:
+                    import traceback
+                    result["direct_convert_error"] = traceback.format_exc()[-500:]
+
+                # Try adapter's convert method with exception detail
+                try:
+                    converted = adapter._convert_horizontal(c)
+                    result["convert_horizontal_result"] = str(converted) if converted else "None"
+                except Exception as e:
+                    import traceback
+                    result["convert_horizontal_error"] = traceback.format_exc()[-500:]
+
+            # Check offset dimensions specifically
+            dims = sketch_obj.sketchDimensions
+            offset_dim_info = []
+            for i in range(dims.count):
+                dim = dims.item(i)
+                if "SketchOffsetDimension" in dim.objectType:
+                    dim_info = {"index": i}
+                    try:
+                        # SketchOffsetDimension uses .line property
+                        entity = dim.line
+                        dim_info["entity_type"] = entity.objectType if entity else "None"
+                        if entity:
+                            token = getattr(entity, "entityToken", None)
+                            dim_info["has_token"] = token is not None
+                            dim_info["in_mapping"] = token in adapter._entity_to_id if token else False
+                            entity_id = adapter._get_id_for_entity(entity)
+                            dim_info["entity_id"] = entity_id if entity_id else "None"
+                        dim_info["is_horizontal"] = getattr(dim, "isHorizontal", "N/A")
+                    except Exception as e:
+                        dim_info["error"] = str(e)[:100]
+                    try:
+                        dim_info["value"] = dim.parameter.value * 10  # cm to mm
+                    except:
+                        pass
+                    offset_dim_info.append(dim_info)
+            result["offset_dimensions"] = offset_dim_info
+
+        except Exception as e:
+            result["adapter_error"] = str(e)
+
+        return result
+
+    return _execute_on_main_thread(do_probe)
+
+
 def start_server(
     host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, blocking: bool = True
 ) -> bool:
@@ -660,6 +824,7 @@ def start_server(
     _server.register_function(get_status, "get_status")
     _server.register_function(ping, "ping")
     _server.register_function(open_sketch_in_edit_mode, "open_sketch_in_sketcher")
+    _server.register_function(probe_constraints, "probe_constraints")
 
     print(f"Fusion 360 sketch server started on {host}:{port}")
 

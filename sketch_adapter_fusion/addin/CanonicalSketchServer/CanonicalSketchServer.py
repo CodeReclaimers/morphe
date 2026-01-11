@@ -110,7 +110,7 @@ def run(context: dict) -> None:
             return
 
         # Import and start the server
-        from sketch_adapter_fusion.server import start_server, is_server_running
+        from sketch_adapter_fusion.server import is_server_running, start_server
 
         if is_server_running():
             # Server already running (e.g., add-in reloaded within same session)
@@ -152,7 +152,7 @@ def stop(context: dict) -> None:
 
     try:
         if _server_started and _paths_ok:
-            from sketch_adapter_fusion.server import stop_server, is_server_running
+            from sketch_adapter_fusion.server import is_server_running, stop_server
 
             if is_server_running():
                 stop_server()

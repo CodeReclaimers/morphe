@@ -40,7 +40,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["sketch_canonical*", "sketch_adapter_freecad*", "sketch_adapter_fusion*", "sketch_adapter_inventor*", "sketch_adapter_solidworks*"]
+include = ["sketch_canonical*", "sketch_adapter_common*", "sketch_adapter_freecad*", "sketch_adapter_fusion*", "sketch_adapter_inventor*", "sketch_adapter_solidworks*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -70,3 +70,4 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "sketch_adapter_fusion/test_scripts/*.py" = ["E402"]  # Imports after path manipulation
+"sketch_adapter_fusion/addin/*/*.py" = ["E402"]  # Imports after path setup for add-in

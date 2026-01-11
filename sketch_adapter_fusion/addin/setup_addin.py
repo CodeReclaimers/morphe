@@ -35,6 +35,7 @@ def get_fusion_addins_dir() -> Path | None:
                     return path
             # Default to the standard path
             return paths[0]
+        return None
 
     elif system == "Darwin":  # macOS
         home = Path.home()
@@ -99,7 +100,7 @@ def install() -> bool:
         else:
             link_path.symlink_to(source_dir)
 
-        print(f"Successfully installed add-in!")
+        print("Successfully installed add-in!")
         print(f"  Source: {source_dir}")
         print(f"  Link:   {link_path}")
         print()
@@ -177,17 +178,17 @@ def status() -> None:
 
     if link_path.is_symlink():
         target = link_path.resolve()
-        print(f"  Status: Installed (symlink)")
+        print("  Status: Installed (symlink)")
         print(f"  Points to: {target}")
         if target == source_dir.resolve():
-            print(f"  Valid: Yes")
+            print("  Valid: Yes")
         else:
-            print(f"  Valid: No (points to wrong location)")
+            print("  Valid: No (points to wrong location)")
     elif link_path.exists():
-        print(f"  Status: Installed (directory, not symlink)")
-        print(f"  Warning: Manual installation may have path issues")
+        print("  Status: Installed (directory, not symlink)")
+        print("  Warning: Manual installation may have path issues")
     else:
-        print(f"  Status: Not installed")
+        print("  Status: Not installed")
 
 
 def main() -> int:

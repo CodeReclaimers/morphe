@@ -23,7 +23,7 @@ class SketchEncoder(json.JSONEncoder):
             return [obj.x, obj.y]
         elif isinstance(obj, PointRef):
             return point_ref_to_dict(obj)
-        elif isinstance(obj, (ConstraintType, ConstraintStatus, SolverStatus, PointType)):
+        elif isinstance(obj, ConstraintType | ConstraintStatus | SolverStatus | PointType):
             return obj.value
         return super().default(obj)
 

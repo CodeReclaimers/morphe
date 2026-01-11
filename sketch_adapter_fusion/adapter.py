@@ -1073,7 +1073,7 @@ class FusionAdapter(SketchBackendAdapter):
                 point.y * MM_TO_CM,
                 0
             )
-        elif isinstance(point, (list, tuple)):
+        elif isinstance(point, list | tuple):
             return self._adsk_core.Point3D.create(
                 point[0] * MM_TO_CM,
                 point[1] * MM_TO_CM,

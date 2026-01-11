@@ -28,7 +28,9 @@ import threading
 import traceback
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
-from xmlrpc.server import SimpleXMLRPCRequestHandler, SimpleXMLRPCServer
+from xmlrpc.server import SimpleXMLRPCServer
+
+from sketch_adapter_common import QuietRequestHandler
 
 # These imports only work inside FreeCAD
 try:
@@ -187,13 +189,6 @@ class MainThreadExecutor:
 _executor = MainThreadExecutor()
 
 
-class QuietRequestHandler(SimpleXMLRPCRequestHandler):
-    """Request handler that suppresses logging."""
-
-    def log_message(self, format: str, *args: object) -> None:
-        pass  # Suppress default logging
-
-
 def _get_adapter() -> FreeCADAdapter:  # noqa: F821
     """Get a FreeCADAdapter instance. Import here to avoid circular imports."""
     from .adapter import FreeCADAdapter
@@ -201,14 +196,14 @@ def _get_adapter() -> FreeCADAdapter:  # noqa: F821
     return FreeCADAdapter()
 
 
-def _get_sketch_to_json() -> callable:
+def _get_sketch_to_json() -> Callable[..., Any]:
     """Get sketch_to_json function."""
     from sketch_canonical import sketch_to_json
 
     return sketch_to_json
 
 
-def _get_sketch_from_json() -> callable:
+def _get_sketch_from_json() -> Callable[..., Any]:
     """Get sketch_from_json function."""
     from sketch_canonical import sketch_from_json
 
@@ -446,6 +441,23 @@ def get_status() -> dict:
     return result
 
 
+def ping() -> dict:
+    """
+    Lightweight health check that doesn't require main thread execution.
+
+    This is useful for connection polling as it responds immediately
+    without queuing work to FreeCAD's main thread.
+
+    Returns:
+        Dict with server_version, freecad_available, status
+    """
+    return {
+        "server_version": SERVER_VERSION,
+        "freecad_available": FREECAD_AVAILABLE,
+        "status": "ok",
+    }
+
+
 def open_sketch_in_sketcher(sketch_name: str) -> bool:
     """
     Open a sketch in the Sketcher workbench for editing.
@@ -536,6 +548,7 @@ def start_server(
     _server.register_function(import_sketch, "import_sketch")
     _server.register_function(get_solver_status, "get_solver_status")
     _server.register_function(get_status, "get_status")
+    _server.register_function(ping, "ping")
     _server.register_function(open_sketch_in_sketcher, "open_sketch_in_sketcher")
 
     print(f"FreeCAD sketch server started on {host}:{port}")

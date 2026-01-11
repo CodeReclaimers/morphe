@@ -30,7 +30,9 @@ import queue
 import threading
 import traceback
 from typing import TYPE_CHECKING, Any
-from xmlrpc.server import SimpleXMLRPCRequestHandler, SimpleXMLRPCServer
+from xmlrpc.server import SimpleXMLRPCServer
+
+from sketch_adapter_common import QuietRequestHandler
 
 if TYPE_CHECKING:
     pass
@@ -61,13 +63,6 @@ _event_handler: Any = None
 # Queue for passing work to main thread
 _work_queue: queue.Queue | None = None
 _result_queue: queue.Queue | None = None
-
-
-class QuietRequestHandler(SimpleXMLRPCRequestHandler):
-    """Request handler that suppresses logging."""
-
-    def log_message(self, format: str, *args: object) -> None:
-        pass  # Suppress default logging
 
 
 def _create_event_handler_class() -> type | None:
@@ -501,6 +496,23 @@ def get_solver_status(sketch_name: str) -> dict:
     return _execute_on_main_thread(do_get_status)
 
 
+def ping() -> dict:
+    """
+    Lightweight health check that doesn't require main thread execution.
+
+    This is useful for quick connection checks without blocking on Fusion's
+    UI thread. Use this for polling/heartbeat instead of get_status().
+
+    Returns:
+        Dict with server_version and fusion_available
+    """
+    return {
+        "server_version": SERVER_VERSION,
+        "fusion_available": FUSION_AVAILABLE,
+        "status": "ok",
+    }
+
+
 def get_status() -> dict:
     """
     Get server and Fusion 360 status.
@@ -646,6 +658,7 @@ def start_server(
     _server.register_function(import_sketch, "import_sketch")
     _server.register_function(get_solver_status, "get_solver_status")
     _server.register_function(get_status, "get_status")
+    _server.register_function(ping, "ping")
     _server.register_function(open_sketch_in_edit_mode, "open_sketch_in_sketcher")
 
     print(f"Fusion 360 sketch server started on {host}:{port}")
@@ -665,19 +678,28 @@ def start_server(
 
 
 def stop_server() -> None:
-    """Stop the RPC server."""
+    """Stop the RPC server (non-blocking)."""
     global _server, _server_thread
 
     if _server is not None:
-        # Set a short socket timeout to speed up shutdown
-        try:
-            _server.socket.settimeout(0.5)
-        except Exception:
-            pass
-        _server.shutdown()
+        server_to_stop = _server
         _server = None
         _server_thread = None
         _cleanup_custom_event()
+
+        # Shutdown in background thread to avoid blocking
+        def do_shutdown():
+            try:
+                server_to_stop.socket.settimeout(0.5)
+            except Exception:
+                pass
+            try:
+                server_to_stop.shutdown()
+            except Exception:
+                pass
+
+        shutdown_thread = threading.Thread(target=do_shutdown, daemon=True)
+        shutdown_thread.start()
         print("Server stopped")
     else:
         print("Server not running")

@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import threading
 from typing import TYPE_CHECKING, Any
-from xmlrpc.server import SimpleXMLRPCRequestHandler, SimpleXMLRPCServer
+from xmlrpc.server import SimpleXMLRPCServer
+
+from sketch_adapter_common import QuietRequestHandler
 
 from .adapter import INVENTOR_AVAILABLE, InventorAdapter
 
@@ -67,13 +69,6 @@ def _uninit_com() -> None:
             pythoncom.CoUninitialize()
         except Exception:
             pass
-
-
-class QuietRequestHandler(SimpleXMLRPCRequestHandler):
-    """Request handler that suppresses logging."""
-
-    def log_message(self, format: str, *args: object) -> None:
-        pass  # Suppress default logging
 
 
 def _get_adapter() -> InventorAdapter:
@@ -373,6 +368,23 @@ def get_status() -> dict:
     return result
 
 
+def ping() -> dict:
+    """
+    Lightweight health check that doesn't require COM operations.
+
+    This is useful for connection polling as it responds immediately
+    without initializing COM or talking to Inventor.
+
+    Returns:
+        Dict with server_version, inventor_available, status
+    """
+    return {
+        "server_version": SERVER_VERSION,
+        "inventor_available": INVENTOR_AVAILABLE,
+        "status": "ok",
+    }
+
+
 def open_sketch_in_edit_mode(sketch_name: str) -> bool:
     """
     Open a sketch in edit mode for editing.
@@ -449,6 +461,7 @@ def start_server(
     _server.register_function(import_sketch, "import_sketch")
     _server.register_function(get_solver_status, "get_solver_status")
     _server.register_function(get_status, "get_status")
+    _server.register_function(ping, "ping")
     _server.register_function(open_sketch_in_edit_mode, "open_sketch_in_sketcher")
 
     print(f"Inventor sketch server started on {host}:{port}")

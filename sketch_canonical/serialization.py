@@ -5,7 +5,7 @@ from typing import Any
 
 from .constraints import ConstraintStatus, ConstraintType, SketchConstraint
 from .document import SketchDocument, SolverStatus
-from .primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
+from .primitives import Arc, Circle, Ellipse, EllipticalArc, Line, Point, SketchPrimitive, Spline
 from .types import Point2D, PointRef, PointType
 
 
@@ -134,6 +134,23 @@ def primitive_to_dict(p: SketchPrimitive) -> dict:
         })
         if p.weights is not None:
             base["weights"] = p.weights
+    elif isinstance(p, Ellipse):
+        base.update({
+            "center": [p.center.x, p.center.y],
+            "major_radius": p.major_radius,
+            "minor_radius": p.minor_radius,
+            "rotation": p.rotation,
+        })
+    elif isinstance(p, EllipticalArc):
+        base.update({
+            "center": [p.center.x, p.center.y],
+            "major_radius": p.major_radius,
+            "minor_radius": p.minor_radius,
+            "rotation": p.rotation,
+            "start_param": p.start_param,
+            "end_param": p.end_param,
+            "ccw": p.ccw,
+        })
 
     return base
 
@@ -208,6 +225,33 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
             weights=data.get("weights"),
             periodic=data.get("periodic", False),
             is_fit_spline=data.get("is_fit_spline", False)
+        )
+    elif prim_type == "ellipse":
+        center = _parse_point(data.get("center", [0, 0]))
+        prim = Ellipse(
+            id=id_val,
+            construction=construction,
+            source=source,
+            confidence=confidence,
+            center=center,
+            major_radius=data.get("major_radius", 1.0),
+            minor_radius=data.get("minor_radius", 0.5),
+            rotation=data.get("rotation", 0.0),
+        )
+    elif prim_type == "ellipticalarc":
+        center = _parse_point(data.get("center", [0, 0]))
+        prim = EllipticalArc(
+            id=id_val,
+            construction=construction,
+            source=source,
+            confidence=confidence,
+            center=center,
+            major_radius=data.get("major_radius", 1.0),
+            minor_radius=data.get("minor_radius", 0.5),
+            rotation=data.get("rotation", 0.0),
+            start_param=data.get("start_param", 0.0),
+            end_param=data.get("end_param", 1.5707963267948966),  # pi/2
+            ccw=data.get("ccw", True),
         )
     else:
         raise ValueError(f"Unknown primitive type: {prim_type}")

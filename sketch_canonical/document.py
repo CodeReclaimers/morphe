@@ -4,7 +4,16 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .constraints import SketchConstraint
-from .primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
+from .primitives import (
+    Arc,
+    Circle,
+    Ellipse,
+    EllipticalArc,
+    Line,
+    Point,
+    SketchPrimitive,
+    Spline,
+)
 from .types import ElementPrefix, Point2D, PointRef, PointType
 
 
@@ -44,7 +53,9 @@ class SketchDocument:
         ElementPrefix.ARC: 0,
         ElementPrefix.CIRCLE: 0,
         ElementPrefix.POINT: 0,
-        ElementPrefix.SPLINE: 0
+        ElementPrefix.SPLINE: 0,
+        ElementPrefix.ELLIPSE: 0,
+        ElementPrefix.ELLIPTICAL_ARC: 0,
     })
 
     def _get_prefix_for_type(self, primitive_type: type[SketchPrimitive]) -> str:
@@ -54,7 +65,9 @@ class SketchDocument:
             Arc: ElementPrefix.ARC,
             Circle: ElementPrefix.CIRCLE,
             Point: ElementPrefix.POINT,
-            Spline: ElementPrefix.SPLINE
+            Spline: ElementPrefix.SPLINE,
+            Ellipse: ElementPrefix.ELLIPSE,
+            EllipticalArc: ElementPrefix.ELLIPTICAL_ARC,
         }
         prefix = prefix_map.get(primitive_type)
         if prefix is None:
@@ -203,6 +216,14 @@ class SketchDocument:
         """Get all splines in the sketch."""
         return [p for p in self.primitives.values() if isinstance(p, Spline)]
 
+    def get_ellipses(self) -> list[Ellipse]:
+        """Get all ellipses in the sketch."""
+        return [p for p in self.primitives.values() if isinstance(p, Ellipse)]
+
+    def get_elliptical_arcs(self) -> list[EllipticalArc]:
+        """Get all elliptical arcs in the sketch."""
+        return [p for p in self.primitives.values() if isinstance(p, EllipticalArc)]
+
     def get_construction_geometry(self) -> list[SketchPrimitive]:
         """Get all construction (reference) geometry."""
         return [p for p in self.primitives.values() if p.construction]
@@ -220,7 +241,9 @@ class SketchDocument:
             ElementPrefix.ARC: 0,
             ElementPrefix.CIRCLE: 0,
             ElementPrefix.POINT: 0,
-            ElementPrefix.SPLINE: 0
+            ElementPrefix.SPLINE: 0,
+            ElementPrefix.ELLIPSE: 0,
+            ElementPrefix.ELLIPTICAL_ARC: 0,
         }
         self.solver_status = SolverStatus.DIRTY
         self.degrees_of_freedom = -1
@@ -279,6 +302,15 @@ class SketchDocument:
         elif isinstance(p, Spline):
             periodic = "periodic" if p.periodic else "open"
             return f"{p.id}: Spline degree={p.degree} points={len(p.control_points)} {periodic}{const_marker}"
+        elif isinstance(p, Ellipse):
+            import math
+            rot_deg = math.degrees(p.rotation)
+            return f"{p.id}: Ellipse center=({p.center.x:.2f},{p.center.y:.2f}) a={p.major_radius:.2f} b={p.minor_radius:.2f} rot={rot_deg:.1f}°{const_marker}"
+        elif isinstance(p, EllipticalArc):
+            import math
+            direction = "CCW" if p.ccw else "CW"
+            rot_deg = math.degrees(p.rotation)
+            return f"{p.id}: EllipticalArc center=({p.center.x:.2f},{p.center.y:.2f}) a={p.major_radius:.2f} b={p.minor_radius:.2f} rot={rot_deg:.1f}° {direction}{const_marker}"
         else:
             return f"{p.id}: {type(p).__name__}{const_marker}"
 

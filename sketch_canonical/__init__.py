@@ -7,7 +7,7 @@ Inventor, Fusion 360).
 
 Example usage:
     from sketch_canonical import (
-        SketchDocument, Point2D, Line, Arc, Circle, Spline,
+        SketchDocument, Point2D, Line, Arc, Circle, Ellipse, EllipticalArc, Spline,
         Coincident, Tangent, Horizontal, Radius,
         PointRef, PointType,
         validate_sketch, sketch_to_json, sketch_from_json
@@ -96,6 +96,8 @@ from .document import (
 from .primitives import (
     Arc,
     Circle,
+    Ellipse,
+    EllipticalArc,
     Line,
     Point,
     SketchPrimitive,
@@ -155,6 +157,8 @@ __all__ = [
     "Line",
     "Arc",
     "Circle",
+    "Ellipse",
+    "EllipticalArc",
     "Point",
     "Spline",
 

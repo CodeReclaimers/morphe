@@ -20,6 +20,8 @@ from sketch_canonical import (
     DistanceX,
     DistanceY,
     ElementId,
+    Ellipse,
+    EllipticalArc,
     Equal,
     Fixed,
     Horizontal,
@@ -559,6 +561,302 @@ class TestSpline:
         assert spline.construction
 
 
+class TestEllipse:
+    def test_default_values(self):
+        e = Ellipse()
+        assert e.center == Point2D(0, 0)
+        assert e.major_radius == 1.0
+        assert e.minor_radius == 0.5
+        assert e.rotation == 0.0
+
+    def test_eccentricity_circle(self):
+        # When major_radius == minor_radius, eccentricity should be 0
+        e = Ellipse(center=Point2D(0, 0), major_radius=5, minor_radius=5)
+        assert abs(e.eccentricity) < 1e-10
+
+    def test_eccentricity_elongated(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=5, minor_radius=3)
+        # e = sqrt(1 - (3/5)^2) = sqrt(1 - 0.36) = sqrt(0.64) = 0.8
+        assert abs(e.eccentricity - 0.8) < 1e-10
+
+    def test_eccentricity_zero_radius(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=0, minor_radius=0)
+        assert e.eccentricity == 0.0
+
+    def test_focal_distance(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=5, minor_radius=3)
+        # c = sqrt(25 - 9) = sqrt(16) = 4
+        assert abs(e.focal_distance - 4.0) < 1e-10
+
+    def test_focus_points_no_rotation(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=5, minor_radius=3)
+        f1 = e.focus1
+        f2 = e.focus2
+        assert abs(f1.x - 4.0) < 1e-10
+        assert abs(f1.y) < 1e-10
+        assert abs(f2.x + 4.0) < 1e-10
+        assert abs(f2.y) < 1e-10
+
+    def test_focus_points_rotated(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=5, minor_radius=3, rotation=math.pi/2)
+        f1 = e.focus1
+        f2 = e.focus2
+        # Rotated 90 degrees, foci should be on Y axis
+        assert abs(f1.x) < 1e-10
+        assert abs(f1.y - 4.0) < 1e-10
+        assert abs(f2.x) < 1e-10
+        assert abs(f2.y + 4.0) < 1e-10
+
+    def test_area(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=4, minor_radius=3)
+        assert abs(e.area - 12 * math.pi) < 1e-10
+
+    def test_circumference(self):
+        # For a circle (a=b=r), circumference should be 2*pi*r
+        e = Ellipse(center=Point2D(0, 0), major_radius=5, minor_radius=5)
+        assert abs(e.circumference - 2 * math.pi * 5) < 0.01
+
+    def test_point_at_parameter_axis_aligned(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=10, minor_radius=5, rotation=0)
+        # At t=0, point should be at (major_radius, 0)
+        p0 = e.point_at_parameter(0)
+        assert abs(p0.x - 10) < 1e-10
+        assert abs(p0.y) < 1e-10
+        # At t=pi/2, point should be at (0, minor_radius)
+        p90 = e.point_at_parameter(math.pi / 2)
+        assert abs(p90.x) < 1e-10
+        assert abs(p90.y - 5) < 1e-10
+        # At t=pi, point should be at (-major_radius, 0)
+        p180 = e.point_at_parameter(math.pi)
+        assert abs(p180.x + 10) < 1e-10
+        assert abs(p180.y) < 1e-10
+
+    def test_point_at_parameter_with_center(self):
+        e = Ellipse(center=Point2D(100, 200), major_radius=10, minor_radius=5, rotation=0)
+        p0 = e.point_at_parameter(0)
+        assert abs(p0.x - 110) < 1e-10
+        assert abs(p0.y - 200) < 1e-10
+
+    def test_point_at_parameter_rotated(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=10, minor_radius=5, rotation=math.pi/2)
+        # At t=0, with 90 degree rotation, major axis is now along Y
+        p0 = e.point_at_parameter(0)
+        assert abs(p0.x) < 1e-10
+        assert abs(p0.y - 10) < 1e-10
+
+    def test_get_point_center(self):
+        e = Ellipse(center=Point2D(5, 10), major_radius=20, minor_radius=15)
+        assert e.get_point(PointType.CENTER) == Point2D(5, 10)
+
+    def test_get_point_invalid(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=10, minor_radius=5)
+        with pytest.raises(ValueError):
+            e.get_point(PointType.START)
+
+    def test_get_valid_point_types(self):
+        e = Ellipse(center=Point2D(0, 0), major_radius=10, minor_radius=5)
+        types = e.get_valid_point_types()
+        assert PointType.CENTER in types
+        assert len(types) == 1
+
+
+class TestEllipticalArc:
+    def test_default_values(self):
+        ea = EllipticalArc()
+        assert ea.center == Point2D(0, 0)
+        assert ea.major_radius == 1.0
+        assert ea.minor_radius == 0.5
+        assert ea.rotation == 0.0
+        assert ea.start_param == 0.0
+        assert abs(ea.end_param - math.pi / 2) < 1e-10
+        assert ea.ccw is True
+
+    def test_start_point(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            rotation=0,
+            start_param=0,
+            end_param=math.pi / 2,
+            ccw=True
+        )
+        start = ea.start_point
+        assert abs(start.x - 10) < 1e-10
+        assert abs(start.y) < 1e-10
+
+    def test_end_point(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            rotation=0,
+            start_param=0,
+            end_param=math.pi / 2,
+            ccw=True
+        )
+        end = ea.end_point
+        assert abs(end.x) < 1e-10
+        assert abs(end.y - 5) < 1e-10
+
+    def test_sweep_param_ccw(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            start_param=0,
+            end_param=math.pi / 2,
+            ccw=True
+        )
+        assert abs(ea.sweep_param - math.pi / 2) < 1e-10
+
+    def test_sweep_param_ccw_wrap(self):
+        # Start at 3pi/2, end at pi/4, CCW should wrap around
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            start_param=3 * math.pi / 2,
+            end_param=math.pi / 4,
+            ccw=True
+        )
+        # Expected sweep: going CCW from 270 deg to 45 deg = 135 degrees = 3pi/4
+        expected_sweep = 3 * math.pi / 4
+        assert abs(ea.sweep_param - expected_sweep) < 1e-10
+
+    def test_sweep_param_cw(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            start_param=0,
+            end_param=math.pi / 2,
+            ccw=False
+        )
+        # CW sweep should be negative, going the long way
+        assert ea.sweep_param < 0
+        assert abs(ea.sweep_param + 3 * math.pi / 2) < 1e-10
+
+    def test_midpoint(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            rotation=0,
+            start_param=0,
+            end_param=math.pi / 2,
+            ccw=True
+        )
+        mid = ea.midpoint
+        # Mid should be at t = pi/4
+        expected = ea.point_at_parameter(math.pi / 4)
+        assert abs(mid.x - expected.x) < 1e-10
+        assert abs(mid.y - expected.y) < 1e-10
+
+    def test_point_at_parameter(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            rotation=0,
+            start_param=0,
+            end_param=math.pi,
+            ccw=True
+        )
+        p = ea.point_at_parameter(math.pi / 2)
+        assert abs(p.x) < 1e-10
+        assert abs(p.y - 5) < 1e-10
+
+    def test_get_point_start(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            start_param=0,
+            end_param=math.pi
+        )
+        start = ea.get_point(PointType.START)
+        assert abs(start.x - 10) < 1e-10
+        assert abs(start.y) < 1e-10
+
+    def test_get_point_end(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            start_param=0,
+            end_param=math.pi
+        )
+        end = ea.get_point(PointType.END)
+        assert abs(end.x + 10) < 1e-10
+        assert abs(end.y) < 1e-10
+
+    def test_get_point_center(self):
+        ea = EllipticalArc(center=Point2D(5, 10), major_radius=20, minor_radius=15)
+        assert ea.get_point(PointType.CENTER) == Point2D(5, 10)
+
+    def test_get_point_midpoint(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            start_param=0,
+            end_param=math.pi / 2
+        )
+        mid = ea.get_point(PointType.MIDPOINT)
+        expected = ea.midpoint
+        assert abs(mid.x - expected.x) < 1e-10
+        assert abs(mid.y - expected.y) < 1e-10
+
+    def test_get_point_invalid(self):
+        ea = EllipticalArc(center=Point2D(0, 0), major_radius=10, minor_radius=5)
+        with pytest.raises(ValueError):
+            ea.get_point(PointType.CONTROL)
+
+    def test_get_valid_point_types(self):
+        ea = EllipticalArc(center=Point2D(0, 0), major_radius=10, minor_radius=5)
+        types = ea.get_valid_point_types()
+        assert PointType.START in types
+        assert PointType.END in types
+        assert PointType.CENTER in types
+        assert PointType.MIDPOINT in types
+        assert len(types) == 4
+
+    def test_to_full_ellipse(self):
+        ea = EllipticalArc(
+            id="e0",
+            center=Point2D(5, 10),
+            major_radius=20,
+            minor_radius=15,
+            rotation=0.5,
+            start_param=0,
+            end_param=math.pi,
+            construction=True
+        )
+        e = ea.to_full_ellipse()
+        assert e.id == "e0"
+        assert e.center == Point2D(5, 10)
+        assert e.major_radius == 20
+        assert e.minor_radius == 15
+        assert e.rotation == 0.5
+        assert e.construction is True
+
+    def test_with_rotation(self):
+        ea = EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            rotation=math.pi / 2,
+            start_param=0,
+            end_param=math.pi / 2,
+            ccw=True
+        )
+        # With 90 degree rotation, start point at t=0 should be at (0, 10)
+        start = ea.start_point
+        assert abs(start.x) < 1e-10
+        assert abs(start.y - 10) < 1e-10
+
+
 # =============================================================================
 # Constraints Tests
 # =============================================================================
@@ -864,6 +1162,38 @@ class TestSketchDocument:
         ]))
         assert len(doc.get_splines()) == 1
 
+    def test_get_ellipses(self):
+        doc = SketchDocument(name="Test")
+        doc.add_primitive(Ellipse(center=Point2D(0, 0), major_radius=10, minor_radius=5))
+        doc.add_primitive(Circle(center=Point2D(10, 10), radius=5))
+        assert len(doc.get_ellipses()) == 1
+
+    def test_get_elliptical_arcs(self):
+        doc = SketchDocument(name="Test")
+        doc.add_primitive(EllipticalArc(
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5,
+            start_param=0,
+            end_param=math.pi
+        ))
+        doc.add_primitive(Arc(center=Point2D(10, 10), start_point=Point2D(15, 10), end_point=Point2D(10, 15), ccw=True))
+        assert len(doc.get_elliptical_arcs()) == 1
+
+    def test_add_ellipse_id_assignment(self):
+        doc = SketchDocument(name="Test")
+        eid = doc.add_primitive(Ellipse(center=Point2D(0, 0), major_radius=10, minor_radius=5))
+        assert eid == "E0"
+        eid2 = doc.add_primitive(Ellipse(center=Point2D(10, 10), major_radius=20, minor_radius=15))
+        assert eid2 == "E1"
+
+    def test_add_elliptical_arc_id_assignment(self):
+        doc = SketchDocument(name="Test")
+        eaid = doc.add_primitive(EllipticalArc(center=Point2D(0, 0), major_radius=10, minor_radius=5))
+        assert eaid == "e0"
+        eaid2 = doc.add_primitive(EllipticalArc(center=Point2D(10, 10), major_radius=20, minor_radius=15))
+        assert eaid2 == "e1"
+
     def test_get_construction_geometry(self):
         doc = SketchDocument(name="Test")
         doc.add_primitive(Line(start=Point2D(0, 0), end=Point2D(10, 0), construction=True))
@@ -913,6 +1243,15 @@ class TestSketchDocument:
             Point2D(0, 0), Point2D(10, 10), Point2D(20, 0), Point2D(30, 10)
         ]))
         doc.add_primitive(Line(start=Point2D(0, 10), end=Point2D(10, 10), construction=True))
+        doc.add_primitive(Ellipse(center=Point2D(20, 20), major_radius=10, minor_radius=5, rotation=0.5))
+        doc.add_primitive(EllipticalArc(
+            center=Point2D(30, 30),
+            major_radius=15,
+            minor_radius=8,
+            rotation=0.3,
+            start_param=0,
+            end_param=math.pi
+        ))
         text = doc.to_text_description()
         assert "Line" in text
         assert "Arc" in text
@@ -920,6 +1259,8 @@ class TestSketchDocument:
         assert "Point" in text
         assert "Spline" in text
         assert "[C]" in text
+        assert "Ellipse" in text
+        assert "EllipticalArc" in text
 
     def test_repr(self):
         doc = SketchDocument(name="Test")
@@ -1404,6 +1745,67 @@ class TestSerialization:
         d = primitive_to_dict(spline)
         spline2 = dict_to_primitive(d)
         assert spline2.weights == [1, 2, 1, 1]
+
+    def test_ellipse_round_trip(self):
+        ellipse = Ellipse(
+            id="E0",
+            center=Point2D(5, 10),
+            major_radius=20,
+            minor_radius=15,
+            rotation=0.5,
+            construction=True
+        )
+        d = primitive_to_dict(ellipse)
+        ellipse2 = dict_to_primitive(d)
+        assert ellipse2.id == ellipse.id
+        assert ellipse2.center == ellipse.center
+        assert ellipse2.major_radius == ellipse.major_radius
+        assert ellipse2.minor_radius == ellipse.minor_radius
+        assert ellipse2.rotation == ellipse.rotation
+        assert ellipse2.construction == ellipse.construction
+
+    def test_ellipse_default_rotation(self):
+        ellipse = Ellipse(
+            id="E0",
+            center=Point2D(0, 0),
+            major_radius=10,
+            minor_radius=5
+        )
+        d = primitive_to_dict(ellipse)
+        ellipse2 = dict_to_primitive(d)
+        assert ellipse2.rotation == 0.0
+
+    def test_elliptical_arc_round_trip(self):
+        ea = EllipticalArc(
+            id="e0",
+            center=Point2D(5, 10),
+            major_radius=20,
+            minor_radius=15,
+            rotation=0.5,
+            start_param=0.1,
+            end_param=2.5,
+            ccw=False,
+            construction=True
+        )
+        d = primitive_to_dict(ea)
+        ea2 = dict_to_primitive(d)
+        assert ea2.id == ea.id
+        assert ea2.center == ea.center
+        assert ea2.major_radius == ea.major_radius
+        assert ea2.minor_radius == ea.minor_radius
+        assert ea2.rotation == ea.rotation
+        assert ea2.start_param == ea.start_param
+        assert ea2.end_param == ea.end_param
+        assert ea2.ccw == ea.ccw
+        assert ea2.construction == ea.construction
+
+    def test_elliptical_arc_default_values(self):
+        ea = EllipticalArc(id="e0", center=Point2D(0, 0), major_radius=10, minor_radius=5)
+        d = primitive_to_dict(ea)
+        ea2 = dict_to_primitive(d)
+        assert ea2.start_param == 0.0
+        assert abs(ea2.end_param - math.pi / 2) < 1e-10
+        assert ea2.ccw is True
 
     def test_unknown_primitive_type(self):
         with pytest.raises(ValueError):

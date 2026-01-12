@@ -368,3 +368,221 @@ class Spline(SketchPrimitive):
             knots=knots,
             construction=construction
         )
+
+
+@dataclass
+class Ellipse(SketchPrimitive):
+    """
+    Full ellipse defined by center, semi-major/minor radii, and rotation.
+
+    The ellipse is parameterized as:
+        x = center.x + major_radius * cos(t) * cos(rotation) - minor_radius * sin(t) * sin(rotation)
+        y = center.y + major_radius * cos(t) * sin(rotation) + minor_radius * sin(t) * cos(rotation)
+
+    where t is the parametric angle in [0, 2*pi).
+
+    Attributes:
+        center: Center point of the ellipse
+        major_radius: Semi-major axis length (must be >= minor_radius)
+        minor_radius: Semi-minor axis length
+        rotation: Angle of major axis from positive X-axis, in radians (default 0)
+
+    Valid point types: CENTER only
+    """
+    center: Point2D = field(default_factory=lambda: Point2D(0, 0))
+    major_radius: float = 1.0
+    minor_radius: float = 0.5
+    rotation: float = 0.0  # Radians, angle of major axis from X-axis
+
+    @property
+    def eccentricity(self) -> float:
+        """Calculate ellipse eccentricity (0 = circle, approaching 1 = very elongated)."""
+        if self.major_radius == 0:
+            return 0.0
+        return math.sqrt(1 - (self.minor_radius / self.major_radius) ** 2)
+
+    @property
+    def focal_distance(self) -> float:
+        """Distance from center to each focus."""
+        return math.sqrt(self.major_radius ** 2 - self.minor_radius ** 2)
+
+    @property
+    def focus1(self) -> Point2D:
+        """First focus point (along positive major axis direction)."""
+        c = self.focal_distance
+        return Point2D(
+            self.center.x + c * math.cos(self.rotation),
+            self.center.y + c * math.sin(self.rotation)
+        )
+
+    @property
+    def focus2(self) -> Point2D:
+        """Second focus point (along negative major axis direction)."""
+        c = self.focal_distance
+        return Point2D(
+            self.center.x - c * math.cos(self.rotation),
+            self.center.y - c * math.sin(self.rotation)
+        )
+
+    @property
+    def area(self) -> float:
+        """Calculate ellipse area."""
+        return math.pi * self.major_radius * self.minor_radius
+
+    @property
+    def circumference(self) -> float:
+        """
+        Approximate ellipse circumference using Ramanujan's approximation.
+
+        This is accurate to within 0.01% for most ellipses.
+        """
+        a, b = self.major_radius, self.minor_radius
+        h = ((a - b) ** 2) / ((a + b) ** 2)
+        return math.pi * (a + b) * (1 + (3 * h) / (10 + math.sqrt(4 - 3 * h)))
+
+    def point_at_parameter(self, t: float) -> Point2D:
+        """
+        Get point on ellipse at parametric angle t (radians).
+
+        The parametric angle t is NOT the geometric angle from the center.
+        At t=0, the point is at the positive major axis endpoint.
+        At t=pi/2, the point is at the positive minor axis endpoint.
+        """
+        cos_r = math.cos(self.rotation)
+        sin_r = math.sin(self.rotation)
+        cos_t = math.cos(t)
+        sin_t = math.sin(t)
+
+        x = self.center.x + self.major_radius * cos_t * cos_r - self.minor_radius * sin_t * sin_r
+        y = self.center.y + self.major_radius * cos_t * sin_r + self.minor_radius * sin_t * cos_r
+        return Point2D(x, y)
+
+    def get_point(self, point_type: PointType) -> Point2D:
+        match point_type:
+            case PointType.CENTER:
+                return self.center
+            case _:
+                raise ValueError(f"Invalid point type {point_type} for Ellipse")
+
+    def get_valid_point_types(self) -> list[PointType]:
+        return [PointType.CENTER]
+
+
+@dataclass
+class EllipticalArc(SketchPrimitive):
+    """
+    Elliptical arc defined by center, radii, rotation, and angular extent.
+
+    The arc is a portion of an ellipse, parameterized by start and end angles.
+    These are parametric angles (not geometric angles from center).
+
+    The parametric equation is:
+        x = center.x + major_radius * cos(t) * cos(rotation) - minor_radius * sin(t) * sin(rotation)
+        y = center.y + major_radius * cos(t) * sin(rotation) + minor_radius * sin(t) * cos(rotation)
+
+    Attributes:
+        center: Center point of the ellipse
+        major_radius: Semi-major axis length (must be >= minor_radius)
+        minor_radius: Semi-minor axis length
+        rotation: Angle of major axis from positive X-axis, in radians
+        start_param: Parametric angle at arc start, in radians
+        end_param: Parametric angle at arc end, in radians
+        ccw: If True, arc goes counter-clockwise from start to end
+
+    Valid point types: START, END, CENTER, MIDPOINT
+    """
+    center: Point2D = field(default_factory=lambda: Point2D(0, 0))
+    major_radius: float = 1.0
+    minor_radius: float = 0.5
+    rotation: float = 0.0
+    start_param: float = 0.0  # Parametric angle at start (radians)
+    end_param: float = math.pi / 2  # Parametric angle at end (radians)
+    ccw: bool = True
+
+    def _normalize_angle(self, angle: float) -> float:
+        """Normalize angle to [0, 2*pi)."""
+        while angle < 0:
+            angle += 2 * math.pi
+        while angle >= 2 * math.pi:
+            angle -= 2 * math.pi
+        return angle
+
+    @property
+    def sweep_param(self) -> float:
+        """
+        Signed sweep in parametric angle (positive = CCW).
+
+        Returns the parametric angle traversed from start to end.
+        """
+        delta = self.end_param - self.start_param
+        if self.ccw:
+            # CCW: want positive sweep
+            while delta <= 0:
+                delta += 2 * math.pi
+        else:
+            # CW: want negative sweep
+            while delta >= 0:
+                delta -= 2 * math.pi
+        return delta
+
+    @property
+    def mid_param(self) -> float:
+        """Parametric angle at arc midpoint."""
+        return self.start_param + self.sweep_param / 2
+
+    def point_at_parameter(self, t: float) -> Point2D:
+        """
+        Get point on ellipse at parametric angle t (radians).
+        """
+        cos_r = math.cos(self.rotation)
+        sin_r = math.sin(self.rotation)
+        cos_t = math.cos(t)
+        sin_t = math.sin(t)
+
+        x = self.center.x + self.major_radius * cos_t * cos_r - self.minor_radius * sin_t * sin_r
+        y = self.center.y + self.major_radius * cos_t * sin_r + self.minor_radius * sin_t * cos_r
+        return Point2D(x, y)
+
+    @property
+    def start_point(self) -> Point2D:
+        """Point at the start of the arc."""
+        return self.point_at_parameter(self.start_param)
+
+    @property
+    def end_point(self) -> Point2D:
+        """Point at the end of the arc."""
+        return self.point_at_parameter(self.end_param)
+
+    @property
+    def midpoint(self) -> Point2D:
+        """Point at the middle of the arc."""
+        return self.point_at_parameter(self.mid_param)
+
+    def get_point(self, point_type: PointType) -> Point2D:
+        match point_type:
+            case PointType.START:
+                return self.start_point
+            case PointType.END:
+                return self.end_point
+            case PointType.CENTER:
+                return self.center
+            case PointType.MIDPOINT:
+                return self.midpoint
+            case _:
+                raise ValueError(f"Invalid point type {point_type} for EllipticalArc")
+
+    def get_valid_point_types(self) -> list[PointType]:
+        return [PointType.START, PointType.END, PointType.CENTER, PointType.MIDPOINT]
+
+    def to_full_ellipse(self) -> Ellipse:
+        """Convert to the full ellipse this arc is part of."""
+        return Ellipse(
+            id=self.id,
+            construction=self.construction,
+            source=self.source,
+            confidence=self.confidence,
+            center=self.center,
+            major_radius=self.major_radius,
+            minor_radius=self.minor_radius,
+            rotation=self.rotation
+        )

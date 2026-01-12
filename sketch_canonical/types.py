@@ -78,6 +78,8 @@ class ElementPrefix:
     CIRCLE = "C"
     POINT = "P"
     SPLINE = "S"
+    ELLIPSE = "E"
+    ELLIPTICAL_ARC = "e"
 
 
 @dataclass(frozen=True)

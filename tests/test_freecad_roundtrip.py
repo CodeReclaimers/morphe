@@ -26,6 +26,8 @@ from sketch_canonical import (
     Distance,
     DistanceX,
     DistanceY,
+    Ellipse,
+    EllipticalArc,
     Equal,
     Fixed,
     Horizontal,
@@ -366,6 +368,137 @@ print(json.dumps(result))
         assert prims[0]["type"].lower() == "point"
         assert abs(get_coord(prims[0]["position"], "x") - 25) < 1e-6
         assert abs(get_coord(prims[0]["position"], "y") - 75) < 1e-6
+
+    def test_single_ellipse(self):
+        """Test round-trip of a single ellipse."""
+        sketch = SketchDocument(name="EllipseTest")
+        sketch.add_primitive(Ellipse(
+            center=Point2D(50, 50),
+            major_radius=30,
+            minor_radius=20,
+            rotation=0.0
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+result = {{
+    "success": True,
+    "output": json.loads(sketch_to_json(exported))
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+
+        exported = result["output"]
+        prims = exported["primitives"]
+        assert len(prims) == 1
+        assert prims[0]["type"].lower() == "ellipse"
+        assert abs(get_coord(prims[0]["center"], "x") - 50) < 1e-6
+        assert abs(get_coord(prims[0]["center"], "y") - 50) < 1e-6
+        assert abs(prims[0]["major_radius"] - 30) < 1e-6
+        assert abs(prims[0]["minor_radius"] - 20) < 1e-6
+
+    def test_ellipse_rotated(self):
+        """Test round-trip of a rotated ellipse."""
+        sketch = SketchDocument(name="RotatedEllipseTest")
+        sketch.add_primitive(Ellipse(
+            center=Point2D(100, 100),
+            major_radius=40,
+            minor_radius=25,
+            rotation=math.pi / 4  # 45 degrees
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+result = {{
+    "success": True,
+    "output": json.loads(sketch_to_json(exported))
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+
+        exported = result["output"]
+        prims = exported["primitives"]
+        assert len(prims) == 1
+        assert prims[0]["type"].lower() == "ellipse"
+        assert abs(get_coord(prims[0]["center"], "x") - 100) < 1e-6
+        assert abs(get_coord(prims[0]["center"], "y") - 100) < 1e-6
+        assert abs(prims[0]["major_radius"] - 40) < 1e-6
+        assert abs(prims[0]["minor_radius"] - 25) < 1e-6
+        # Rotation should be preserved (allow some tolerance)
+        assert abs(prims[0]["rotation"] - math.pi / 4) < 0.01
+
+    def test_single_elliptical_arc(self):
+        """Test round-trip of a single elliptical arc."""
+        sketch = SketchDocument(name="EllipticalArcTest")
+        sketch.add_primitive(EllipticalArc(
+            center=Point2D(50, 50),
+            major_radius=30,
+            minor_radius=20,
+            rotation=0.0,
+            start_param=0.0,
+            end_param=math.pi / 2,  # Quarter ellipse
+            ccw=True
+        ))
+
+        input_json = sketch_to_json(sketch)
+
+        script = f'''
+import json
+from sketch_canonical import sketch_from_json, sketch_to_json
+from sketch_adapter_freecad import FreeCADAdapter
+
+sketch = sketch_from_json({repr(input_json)})
+adapter = FreeCADAdapter()
+adapter.create_sketch(sketch.name)
+adapter.load_sketch(sketch)
+exported = adapter.export_sketch()
+
+result = {{
+    "success": True,
+    "output": json.loads(sketch_to_json(exported))
+}}
+print(json.dumps(result))
+'''
+
+        result = run_in_freecad(script)
+        assert result["success"]
+
+        exported = result["output"]
+        prims = exported["primitives"]
+        assert len(prims) == 1
+        assert prims[0]["type"].lower() == "ellipticalarc"
+        assert abs(get_coord(prims[0]["center"], "x") - 50) < 1e-6
+        assert abs(get_coord(prims[0]["center"], "y") - 50) < 1e-6
+        assert abs(prims[0]["major_radius"] - 30) < 1e-6
+        assert abs(prims[0]["minor_radius"] - 20) < 1e-6
 
 
 class TestFreeCADRoundTripComplex:

@@ -21,6 +21,8 @@ from sketch_canonical import (
     Distance,
     DistanceX,
     DistanceY,
+    Ellipse,
+    EllipticalArc,
     Equal,
     Fixed,
     Horizontal,
@@ -150,6 +152,77 @@ class TestSolidWorksRoundTripBasic:
         assert isinstance(point, Point)
         assert abs(point.position.x - 75) < 1e-6
         assert abs(point.position.y - 25) < 1e-6
+
+    def test_single_ellipse(self, adapter):
+        """Test round-trip of a single ellipse."""
+        sketch = SketchDocument(name="EllipseTest")
+        sketch.add_primitive(Ellipse(
+            center=Point2D(50, 50),
+            major_radius=30,
+            minor_radius=20,
+            rotation=0.0
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        ellipse = list(exported.primitives.values())[0]
+        assert isinstance(ellipse, Ellipse)
+        assert abs(ellipse.center.x - 50) < 1e-6
+        assert abs(ellipse.center.y - 50) < 1e-6
+        assert abs(ellipse.major_radius - 30) < 1e-6
+        assert abs(ellipse.minor_radius - 20) < 1e-6
+
+    def test_ellipse_rotated(self, adapter):
+        """Test round-trip of a rotated ellipse."""
+        sketch = SketchDocument(name="RotatedEllipseTest")
+        sketch.add_primitive(Ellipse(
+            center=Point2D(100, 100),
+            major_radius=40,
+            minor_radius=25,
+            rotation=math.pi / 4  # 45 degrees
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        ellipse = list(exported.primitives.values())[0]
+        assert isinstance(ellipse, Ellipse)
+        assert abs(ellipse.center.x - 100) < 1e-6
+        assert abs(ellipse.center.y - 100) < 1e-6
+        assert abs(ellipse.major_radius - 40) < 1e-6
+        assert abs(ellipse.minor_radius - 25) < 1e-6
+        # Rotation should be preserved (allow some tolerance)
+        assert abs(ellipse.rotation - math.pi / 4) < 0.01
+
+    def test_single_elliptical_arc(self, adapter):
+        """Test round-trip of a single elliptical arc."""
+        sketch = SketchDocument(name="EllipticalArcTest")
+        sketch.add_primitive(EllipticalArc(
+            center=Point2D(50, 50),
+            major_radius=30,
+            minor_radius=20,
+            rotation=0.0,
+            start_param=0.0,
+            end_param=math.pi / 2,  # Quarter ellipse
+            ccw=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, EllipticalArc)
+        assert abs(arc.center.x - 50) < 1e-6
+        assert abs(arc.center.y - 50) < 1e-6
+        assert abs(arc.major_radius - 30) < 1e-6
+        assert abs(arc.minor_radius - 20) < 1e-6
 
 
 class TestSolidWorksRoundTripComplex:

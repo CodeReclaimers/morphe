@@ -20,6 +20,8 @@ from sketch_canonical import (
     Circle,
     ConstraintError,
     ConstraintType,
+    Ellipse,
+    EllipticalArc,
     ExportError,
     GeometryError,
     Line,
@@ -450,12 +452,87 @@ class SolidWorksAdapter(SketchBackendAdapter):
             self._midpoint_to_id: dict[tuple[float, float], str] = {}  # (x, y) -> id
             self._segment_index_to_id: list[str | None] = []  # index -> id (for constraint export)
 
+            # Handle stored ellipse geometry specially - SolidWorks may decompose
+            # ellipses into multiple arc segments, so we use stored geometry directly
+            # if constraints haven't been applied
+            stored_ellipse_ids: set[str] = set()
+            if not self._constraints_applied:
+                for geom in self._segment_geometry_list:
+                    if geom['type'] == 'ellipse':
+                        prim = Ellipse(
+                            id=geom.get('element_id'),
+                            center=Point2D(geom['center'][0], geom['center'][1]),
+                            major_radius=geom['major_radius'],
+                            minor_radius=geom['minor_radius'],
+                            rotation=geom.get('rotation', 0.0),
+                            construction=geom.get('construction', False)
+                        )
+                        doc.add_primitive(prim)
+                        stored_ellipse_ids.add(geom.get('element_id', ''))
+                        # Add all ellipse-related points to used_point_coords
+                        # SolidWorks creates points at center and major/minor axis endpoints
+                        cx, cy = prim.center.x, prim.center.y
+                        rot = prim.rotation
+                        cos_r, sin_r = math.cos(rot), math.sin(rot)
+                        used_point_coords.add((round(cx, 6), round(cy, 6)))  # center
+                        # Major axis endpoints
+                        used_point_coords.add((round(cx + prim.major_radius * cos_r, 6),
+                                               round(cy + prim.major_radius * sin_r, 6)))
+                        used_point_coords.add((round(cx - prim.major_radius * cos_r, 6),
+                                               round(cy - prim.major_radius * sin_r, 6)))
+                        # Minor axis endpoints (perpendicular to major axis)
+                        used_point_coords.add((round(cx - prim.minor_radius * sin_r, 6),
+                                               round(cy + prim.minor_radius * cos_r, 6)))
+                        used_point_coords.add((round(cx + prim.minor_radius * sin_r, 6),
+                                               round(cy - prim.minor_radius * cos_r, 6)))
+                    elif geom['type'] == 'elliptical_arc':
+                        prim = EllipticalArc(
+                            id=geom.get('element_id'),
+                            center=Point2D(geom['center'][0], geom['center'][1]),
+                            major_radius=geom['major_radius'],
+                            minor_radius=geom['minor_radius'],
+                            rotation=geom.get('rotation', 0.0),
+                            start_param=geom['start_param'],
+                            end_param=geom['end_param'],
+                            ccw=geom['ccw'],
+                            construction=geom.get('construction', False)
+                        )
+                        doc.add_primitive(prim)
+                        stored_ellipse_ids.add(geom.get('element_id', ''))
+                        # Add all elliptical arc related points
+                        cx, cy = prim.center.x, prim.center.y
+                        rot = prim.rotation
+                        cos_r, sin_r = math.cos(rot), math.sin(rot)
+                        used_point_coords.add((round(cx, 6), round(cy, 6)))  # center
+                        used_point_coords.add((round(prim.start_point.x, 6), round(prim.start_point.y, 6)))
+                        used_point_coords.add((round(prim.end_point.x, 6), round(prim.end_point.y, 6)))
+                        # Major axis endpoint (SolidWorks may create this point)
+                        used_point_coords.add((round(cx + prim.major_radius * cos_r, 6),
+                                               round(cy + prim.major_radius * sin_r, 6)))
+
+            # Build set of ellipse centers for skipping ellipse arc segments
+            ellipse_centers: set[tuple[float, float]] = set()
+            for geom in self._segment_geometry_list:
+                if geom['type'] in ('ellipse', 'elliptical_arc'):
+                    ellipse_centers.add((round(geom['center'][0], 2), round(geom['center'][1], 2)))
+
             # Get all sketch segments
             # Note: In COM late binding, GetSketchSegments may be a property returning
             # a tuple rather than a callable method
             segments = self._get_com_result(sketch, "GetSketchSegments")
             if segments:
                 for seg_idx, segment in enumerate(segments):
+                    # Skip segments that are part of ellipse geometry
+                    # SolidWorks may create ELLIPSE segments or decompose into ARC segments
+                    if stored_ellipse_ids:
+                        seg_type = self._get_com_result(segment, "GetType")
+                        # Always skip ELLIPSE segments if we exported from stored geometry
+                        if seg_type == SwSketchSegments.ELLIPSE:
+                            continue
+                        # Check if ARC segment is part of an ellipse
+                        if self._is_ellipse_arc_segment(segment, ellipse_centers):
+                            continue
+
                     if self._is_construction(segment):
                         construction = True
                     else:
@@ -512,6 +589,12 @@ class SolidWorksAdapter(SketchBackendAdapter):
                             used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
                         elif isinstance(prim, Circle):
                             used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
+                        elif isinstance(prim, Ellipse):
+                            used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
+                        elif isinstance(prim, EllipticalArc):
+                            used_point_coords.add((round(prim.center.x, 6), round(prim.center.y, 6)))
+                            used_point_coords.add((round(prim.start_point.x, 6), round(prim.start_point.y, 6)))
+                            used_point_coords.add((round(prim.end_point.x, 6), round(prim.end_point.y, 6)))
                         elif isinstance(prim, Spline):
                             for pt in prim.control_points:
                                 used_point_coords.add((round(pt.x, 6), round(pt.y, 6)))
@@ -616,6 +699,59 @@ class SolidWorksAdapter(SketchBackendAdapter):
         except Exception:
             return False
 
+    def _is_ellipse_arc_segment(self, segment: Any, ellipse_centers: set[tuple[float, float]]) -> bool:
+        """Check if a segment is part of ellipse geometry.
+
+        SolidWorks may decompose ellipses into multiple arc segments. This method
+        checks if a segment's curve has ellipse parameters with a center matching
+        one of the known ellipse centers.
+
+        Args:
+            segment: SolidWorks sketch segment
+            ellipse_centers: Set of (x, y) tuples for known ellipse centers (in mm)
+
+        Returns:
+            True if segment appears to be part of an ellipse
+        """
+        if not ellipse_centers:
+            return False
+
+        try:
+            # Check segment type - only arcs and ellipse segments could be ellipse parts
+            seg_type = self._get_com_result(segment, "GetType")
+            if seg_type not in (SwSketchSegments.ARC, SwSketchSegments.ELLIPSE):
+                return False
+
+            # Get the curve
+            curve = self._get_com_result(segment, "GetCurve")
+            if not curve:
+                return False
+
+            # Method 1: Try to get ellipse params directly (works even if IsEllipse is False)
+            params = self._get_com_result(curve, "EllipseParams")
+            if params and len(params) >= 3:
+                center_x = params[0] * M_TO_MM
+                center_y = params[1] * M_TO_MM
+                center_key = (round(center_x, 2), round(center_y, 2))
+                if center_key in ellipse_centers:
+                    return True
+
+            # Method 2: For arc segments, check if center matches using CircleParams
+            # (Some ellipse arcs might report as circular arcs with center at ellipse center)
+            if seg_type == SwSketchSegments.ARC:
+                circle_params = self._get_com_result(curve, "CircleParams")
+                if circle_params and len(circle_params) >= 3:
+                    center_x = circle_params[0] * M_TO_MM
+                    center_y = circle_params[1] * M_TO_MM
+                    center_key = (round(center_x, 2), round(center_y, 2))
+                    if center_key in ellipse_centers:
+                        return True
+
+        except Exception:
+            pass
+
+        return False
+
     def add_primitive(self, primitive: SketchPrimitive) -> Any:
         """Add a single primitive to the sketch.
 
@@ -638,6 +774,10 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 entity = self._add_circle(primitive)
             elif isinstance(primitive, Arc):
                 entity = self._add_arc(primitive)
+            elif isinstance(primitive, Ellipse):
+                entity = self._add_ellipse(primitive)
+            elif isinstance(primitive, EllipticalArc):
+                entity = self._add_elliptical_arc(primitive)
             elif isinstance(primitive, Point):
                 entity = self._add_point(primitive)
                 self._standalone_point_ids.add(primitive.id)
@@ -793,6 +933,105 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 'degree': spline.degree,
                 'construction': spline.construction
             })
+
+        return segment
+
+    def _add_ellipse(self, ellipse: Ellipse) -> Any:
+        """Add an ellipse to the sketch."""
+        assert self._sketch_manager is not None
+
+        # SolidWorks CreateEllipse(Xc, Yc, Zc, Xmajor, Ymajor, Zmajor, Xminor, Yminor, Zminor)
+        # We need to compute the major and minor axis endpoints from center, radii, and rotation
+        cos_r = math.cos(ellipse.rotation)
+        sin_r = math.sin(ellipse.rotation)
+
+        # Major axis endpoint (from center along major axis direction)
+        major_x = ellipse.center.x + ellipse.major_radius * cos_r
+        major_y = ellipse.center.y + ellipse.major_radius * sin_r
+
+        # Minor axis endpoint (from center, perpendicular to major axis)
+        minor_x = ellipse.center.x - ellipse.minor_radius * sin_r
+        minor_y = ellipse.center.y + ellipse.minor_radius * cos_r
+
+        segment = self._sketch_manager.CreateEllipse(
+            ellipse.center.x * MM_TO_M,
+            ellipse.center.y * MM_TO_M,
+            0,  # Zc
+            major_x * MM_TO_M,
+            major_y * MM_TO_M,
+            0,  # Zmajor
+            minor_x * MM_TO_M,
+            minor_y * MM_TO_M,
+            0   # Zminor
+        )
+
+        # Store geometry data for export - always store, even if segment is None
+        # (CreateEllipse may return None in late binding even when successful)
+        self._segment_geometry_list.append({
+            'type': 'ellipse',
+            'element_id': ellipse.id,
+            'center': (ellipse.center.x, ellipse.center.y),
+            'major_radius': ellipse.major_radius,
+            'minor_radius': ellipse.minor_radius,
+            'rotation': ellipse.rotation,
+            'construction': ellipse.construction
+        })
+
+        return segment
+
+    def _add_elliptical_arc(self, arc: EllipticalArc) -> Any:
+        """Add an elliptical arc to the sketch."""
+        assert self._sketch_manager is not None
+
+        # SolidWorks CreateEllipticalArc takes 16 parameters:
+        # (Xc, Yc, Zc, Xmajor, Ymajor, Zmajor, Xs, Ys, Zs, Xe, Ye, Ze, Xdir, Ydir, Zdir, Direction)
+        # Direction: 1 = CCW, -1 = CW
+        cos_r = math.cos(arc.rotation)
+        sin_r = math.sin(arc.rotation)
+
+        major_x = arc.center.x + arc.major_radius * cos_r
+        major_y = arc.center.y + arc.major_radius * sin_r
+
+        # Get start and end points from the arc parameters
+        start_pt = arc.start_point
+        end_pt = arc.end_point
+
+        # Direction: 1 = CCW, -1 = CW
+        direction = 1 if arc.ccw else -1
+
+        segment = self._sketch_manager.CreateEllipticalArc(
+            arc.center.x * MM_TO_M,
+            arc.center.y * MM_TO_M,
+            0,  # Zc
+            major_x * MM_TO_M,
+            major_y * MM_TO_M,
+            0,  # Zmajor
+            start_pt.x * MM_TO_M,
+            start_pt.y * MM_TO_M,
+            0,  # Zs
+            end_pt.x * MM_TO_M,
+            end_pt.y * MM_TO_M,
+            0,  # Ze
+            0,  # Xdir (direction vector, perpendicular to sketch plane)
+            0,  # Ydir
+            1,  # Zdir (Z-up for XY plane sketch)
+            direction  # Arc direction: 1=CCW, -1=CW
+        )
+
+        # Store geometry data for export - always store, even if segment is None
+        # (CreateEllipticalArc may return None in late binding even when successful)
+        self._segment_geometry_list.append({
+            'type': 'elliptical_arc',
+            'element_id': arc.id,
+            'center': (arc.center.x, arc.center.y),
+            'major_radius': arc.major_radius,
+            'minor_radius': arc.minor_radius,
+            'rotation': arc.rotation,
+            'start_param': arc.start_param,
+            'end_param': arc.end_param,
+            'ccw': arc.ccw,
+            'construction': arc.construction
+        })
 
         return segment
 
@@ -1736,6 +1975,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
         type_map = {
             SwSketchSegments.LINE: 'line',
             SwSketchSegments.ARC: ['arc', 'circle'],  # Arc can be arc or circle
+            SwSketchSegments.ELLIPSE: ['ellipse', 'elliptical_arc'],  # Ellipse segment type covers both
             SwSketchSegments.SPLINE: 'spline',
         }
 
@@ -1809,6 +2049,42 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 if elem_id:
                     self._matched_geometry_ids.add(elem_id)
                 return geom
+
+            # For ellipses, match by major/minor radii ratio
+            elif geom['type'] == 'ellipse':
+                # Try to get ellipse params from COM
+                try:
+                    curve = self._get_com_result(segment, "GetCurve")
+                    if curve:
+                        params = self._get_com_result(curve, "EllipseParams")
+                        if params and len(params) >= 10:
+                            # Major and minor radii from axis vectors
+                            major_r = math.sqrt(params[3]**2 + params[4]**2 + params[5]**2) * M_TO_MM
+                            minor_r = math.sqrt(params[6]**2 + params[7]**2 + params[8]**2) * M_TO_MM
+                            if (abs(geom['major_radius'] - major_r) < 0.1 and
+                                abs(geom['minor_radius'] - minor_r) < 0.1):
+                                if elem_id:
+                                    self._matched_geometry_ids.add(elem_id)
+                                return geom
+                except Exception:
+                    pass
+
+            # For elliptical arcs, match by radii
+            elif geom['type'] == 'elliptical_arc':
+                try:
+                    curve = self._get_com_result(segment, "GetCurve")
+                    if curve:
+                        params = self._get_com_result(curve, "EllipseParams")
+                        if params and len(params) >= 10:
+                            major_r = math.sqrt(params[3]**2 + params[4]**2 + params[5]**2) * M_TO_MM
+                            minor_r = math.sqrt(params[6]**2 + params[7]**2 + params[8]**2) * M_TO_MM
+                            if (abs(geom['major_radius'] - major_r) < 0.1 and
+                                abs(geom['minor_radius'] - minor_r) < 0.1):
+                                if elem_id:
+                                    self._matched_geometry_ids.add(elem_id)
+                                return geom
+                except Exception:
+                    pass
 
         # Fallback: return first unmatched geometry of matching type
         for geom in self._segment_geometry_list:
@@ -1913,6 +2189,27 @@ class SolidWorksAdapter(SketchBackendAdapter):
                             degree=geom.get('degree', 3),
                             construction=geom.get('construction', construction)
                         )
+                    elif geom['type'] == 'ellipse':
+                        return Ellipse(
+                            id=geom.get('element_id'),
+                            center=Point2D(geom['center'][0], geom['center'][1]),
+                            major_radius=geom['major_radius'],
+                            minor_radius=geom['minor_radius'],
+                            rotation=geom.get('rotation', 0.0),
+                            construction=geom.get('construction', construction)
+                        )
+                    elif geom['type'] == 'elliptical_arc':
+                        return EllipticalArc(
+                            id=geom.get('element_id'),
+                            center=Point2D(geom['center'][0], geom['center'][1]),
+                            major_radius=geom['major_radius'],
+                            minor_radius=geom['minor_radius'],
+                            rotation=geom.get('rotation', 0.0),
+                            start_param=geom['start_param'],
+                            end_param=geom['end_param'],
+                            ccw=geom['ccw'],
+                            construction=geom.get('construction', construction)
+                        )
 
             # Fall back to COM-based export if no stored geometry
 
@@ -1922,6 +2219,8 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 return self._export_arc(segment, construction)
             elif seg_type == SwSketchSegments.SPLINE:
                 return self._export_spline(segment, construction)
+            elif seg_type == SwSketchSegments.ELLIPSE:
+                return self._export_ellipse(segment, construction)
             # Circles are handled differently in SolidWorks
             # They may come as arcs or need special handling
             else:
@@ -2166,6 +2465,132 @@ class SolidWorksAdapter(SketchBackendAdapter):
             degree=3,  # Default degree
             construction=construction
         )
+
+    def _export_ellipse(self, segment: Any, construction: bool = False) -> Ellipse | EllipticalArc:
+        """Export a SolidWorks ellipse or elliptical arc to canonical format.
+
+        SolidWorks uses segment type ELLIPSE (2) for both full ellipses and
+        elliptical arcs. We need to determine which one it is based on whether
+        it's a closed curve.
+        """
+        # Get ellipse parameters from the curve
+        curve = self._get_com_result(segment, "GetCurve")
+
+        center_x = 0.0
+        center_y = 0.0
+        major_radius = 1.0
+        minor_radius = 0.5
+        rotation = 0.0
+
+        if curve:
+            try:
+                # EllipseParams returns [cx, cy, cz, major_ax, major_ay, major_az, minor_ax, minor_ay, minor_az, ratio]
+                params = self._get_com_result(curve, "EllipseParams")
+                if params and len(params) >= 10:
+                    center_x = params[0] * M_TO_MM
+                    center_y = params[1] * M_TO_MM
+
+                    # Major axis direction
+                    major_ax = params[3]
+                    major_ay = params[4]
+
+                    # Compute rotation from major axis direction
+                    rotation = math.atan2(major_ay, major_ax)
+
+                    # Major and minor radii are the lengths of the axis vectors
+                    major_radius = math.sqrt(params[3]**2 + params[4]**2 + params[5]**2) * M_TO_MM
+                    minor_radius = math.sqrt(params[6]**2 + params[7]**2 + params[8]**2) * M_TO_MM
+            except Exception:
+                pass
+
+        # Check if this is a full ellipse or an elliptical arc
+        is_full_ellipse = False
+        try:
+            # Compare arc length to expected full ellipse perimeter
+            arc_length = segment.GetLength * M_TO_MM
+            # Approximation of ellipse perimeter using Ramanujan's formula
+            h = ((major_radius - minor_radius) / (major_radius + minor_radius)) ** 2
+            perimeter = math.pi * (major_radius + minor_radius) * (1 + 3*h / (10 + math.sqrt(4 - 3*h)))
+            if abs(arc_length - perimeter) < 0.01:
+                is_full_ellipse = True
+        except Exception:
+            pass
+
+        if is_full_ellipse:
+            return Ellipse(
+                center=Point2D(center_x, center_y),
+                major_radius=major_radius,
+                minor_radius=minor_radius,
+                rotation=rotation,
+                construction=construction
+            )
+        else:
+            # It's an elliptical arc - get start and end points
+            start_pt = None
+            end_pt = None
+            try:
+                start_pt = segment.GetStartPoint2()
+                end_pt = segment.GetEndPoint2()
+            except Exception:
+                pass
+
+            if start_pt is not None and end_pt is not None:
+                # Convert Cartesian points to parametric angles on the ellipse
+                start_param = self._point_to_ellipse_param(
+                    start_pt.X * M_TO_MM, start_pt.Y * M_TO_MM,
+                    center_x, center_y, rotation
+                )
+                end_param = self._point_to_ellipse_param(
+                    end_pt.X * M_TO_MM, end_pt.Y * M_TO_MM,
+                    center_x, center_y, rotation
+                )
+
+                return EllipticalArc(
+                    center=Point2D(center_x, center_y),
+                    major_radius=major_radius,
+                    minor_radius=minor_radius,
+                    rotation=rotation,
+                    start_param=start_param,
+                    end_param=end_param,
+                    ccw=True,  # Default to counter-clockwise
+                    construction=construction
+                )
+            else:
+                # Couldn't get start/end points, return as full ellipse
+                return Ellipse(
+                    center=Point2D(center_x, center_y),
+                    major_radius=major_radius,
+                    minor_radius=minor_radius,
+                    rotation=rotation,
+                    construction=construction
+                )
+
+    def _point_to_ellipse_param(self, px: float, py: float, cx: float, cy: float, rotation: float) -> float:
+        """Convert a point on an ellipse to its parametric angle.
+
+        Args:
+            px, py: Point coordinates
+            cx, cy: Ellipse center coordinates
+            rotation: Ellipse rotation angle in radians
+
+        Returns:
+            Parametric angle in radians [0, 2*pi)
+        """
+        # Translate point relative to center
+        dx = px - cx
+        dy = py - cy
+
+        # Rotate to align with ellipse axes
+        cos_r = math.cos(-rotation)
+        sin_r = math.sin(-rotation)
+        local_x = dx * cos_r - dy * sin_r
+        local_y = dx * sin_r + dy * cos_r
+
+        # Compute parametric angle using atan2
+        param = math.atan2(local_y, local_x)
+        if param < 0:
+            param += 2 * math.pi
+        return param
 
     def _export_point(self, point: Any) -> Point:
         """Export a SolidWorks point to canonical format."""

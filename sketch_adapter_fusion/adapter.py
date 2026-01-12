@@ -21,7 +21,7 @@ from sketch_canonical.adapter import (
 )
 from sketch_canonical.constraints import ConstraintType, SketchConstraint
 from sketch_canonical.document import SketchDocument, SolverStatus
-from sketch_canonical.primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
+from sketch_canonical.primitives import Arc, Circle, Ellipse, EllipticalArc, Line, Point, SketchPrimitive, Spline
 from sketch_canonical.types import Point2D, PointRef, PointType
 
 from .vertex_map import VertexMap
@@ -173,6 +173,8 @@ class FusionAdapter(SketchBackendAdapter):
             self._export_lines(doc)
             self._export_arcs(doc)
             self._export_circles(doc)
+            self._export_ellipses(doc)
+            self._export_elliptical_arcs(doc)
             self._export_points(doc)
             self._export_splines(doc)
 
@@ -216,6 +218,10 @@ class FusionAdapter(SketchBackendAdapter):
                 entity = self._add_point(primitive)
             elif isinstance(primitive, Spline):
                 entity = self._add_spline(primitive)
+            elif isinstance(primitive, Ellipse):
+                entity = self._add_ellipse(primitive)
+            elif isinstance(primitive, EllipticalArc):
+                entity = self._add_elliptical_arc(primitive)
             else:
                 raise GeometryError(f"Unsupported primitive type: {type(primitive)}")
 
@@ -315,6 +321,66 @@ class FusionAdapter(SketchBackendAdapter):
         splines = self._sketch.sketchCurves.sketchFittedSplines
         return splines.addByNurbsCurve(nurbs_curve)
 
+    def _add_ellipse(self, ellipse: Ellipse) -> Any:
+        """Add an ellipse to the sketch.
+
+        Fusion 360 ellipse API: addByCenter(center, majorAxisPoint, minorAxisLength)
+        - center: Point3D at ellipse center
+        - majorAxisPoint: Point3D defining the major axis endpoint
+        - minorAxisLength: Distance from center to minor axis endpoint (as float)
+        """
+        ellipses = self._sketch.sketchCurves.sketchEllipses
+
+        center_pt = self._point2d_to_point3d(ellipse.center)
+
+        # Calculate major axis endpoint
+        # The major axis is at angle 'rotation' from the X-axis
+        major_axis_x = ellipse.major_radius * math.cos(ellipse.rotation)
+        major_axis_y = ellipse.major_radius * math.sin(ellipse.rotation)
+        major_pt = self._adsk_core.Point3D.create(
+            (ellipse.center.x + major_axis_x) * MM_TO_CM,
+            (ellipse.center.y + major_axis_y) * MM_TO_CM,
+            0
+        )
+
+        # Minor axis length in cm
+        minor_axis_cm = ellipse.minor_radius * MM_TO_CM
+
+        return ellipses.addByCenter(center_pt, major_pt, minor_axis_cm)
+
+    def _add_elliptical_arc(self, arc: EllipticalArc) -> Any:
+        """Add an elliptical arc to the sketch.
+
+        Fusion 360 API: addByCenter(center, majorAxisPoint, minorAxisLength, startAngle, sweepAngle)
+        """
+        elliptical_arcs = self._sketch.sketchCurves.sketchEllipticalArcs
+
+        center_pt = self._point2d_to_point3d(arc.center)
+
+        # Calculate major axis endpoint
+        major_axis_x = arc.major_radius * math.cos(arc.rotation)
+        major_axis_y = arc.major_radius * math.sin(arc.rotation)
+        major_pt = self._adsk_core.Point3D.create(
+            (arc.center.x + major_axis_x) * MM_TO_CM,
+            (arc.center.y + major_axis_y) * MM_TO_CM,
+            0
+        )
+
+        # Minor axis length in cm
+        minor_axis_cm = arc.minor_radius * MM_TO_CM
+
+        # Calculate sweep angle
+        sweep = arc.sweep_param
+
+        # Fusion uses start angle from major axis direction
+        # Our start_param is already the parametric angle
+        start_angle = arc.start_param
+
+        return elliptical_arcs.addByCenter(
+            center_pt, major_pt, minor_axis_cm,
+            start_angle, sweep
+        )
+
     def add_constraint(self, constraint: SketchConstraint) -> bool:
         """Add a constraint to the current sketch.
 
@@ -407,8 +473,12 @@ class FusionAdapter(SketchBackendAdapter):
         obj_type = entity.objectType
         if "SketchLine" in obj_type:
             return "line"
+        elif "SketchEllipticalArc" in obj_type:
+            return "ellipticalarc"
         elif "SketchArc" in obj_type:
             return "arc"
+        elif "SketchEllipse" in obj_type:
+            return "ellipse"
         elif "SketchCircle" in obj_type:
             return "circle"
         elif "SketchPoint" in obj_type:
@@ -1050,6 +1120,8 @@ class FusionAdapter(SketchBackendAdapter):
         """
         supported = {
             "spline": True,
+            "ellipse": True,
+            "elliptical_arc": True,
             "three_point_arc": True,
             "image_capture": True,
             "solver_status": False,  # Limited support
@@ -1176,6 +1248,82 @@ class FusionAdapter(SketchBackendAdapter):
             prim_id = doc.add_primitive(canonical_circle)
             self._id_to_entity[prim_id] = circle
             self._entity_to_id[circle.entityToken] = prim_id
+
+    def _export_ellipses(self, doc: SketchDocument) -> None:
+        """Export all ellipses from the sketch."""
+        ellipses = self._sketch.sketchCurves.sketchEllipses
+        for i in range(ellipses.count):
+            ellipse = ellipses.item(i)
+
+            # Skip reference geometry
+            if ellipse.isReference:
+                continue
+
+            center = self._point3d_to_point2d(ellipse.centerSketchPoint.geometry)
+
+            # Get the ellipse geometry to extract major/minor radii and rotation
+            geom = ellipse.geometry
+            major_radius = geom.majorRadius * CM_TO_MM
+            minor_radius = geom.minorRadius * CM_TO_MM
+
+            # Get rotation from major axis direction
+            major_axis = geom.majorAxis
+            rotation = math.atan2(major_axis.y, major_axis.x)
+
+            canonical_ellipse = Ellipse(
+                center=center,
+                major_radius=major_radius,
+                minor_radius=minor_radius,
+                rotation=rotation,
+                construction=ellipse.isConstruction
+            )
+
+            prim_id = doc.add_primitive(canonical_ellipse)
+            self._id_to_entity[prim_id] = ellipse
+            self._entity_to_id[ellipse.entityToken] = prim_id
+
+    def _export_elliptical_arcs(self, doc: SketchDocument) -> None:
+        """Export all elliptical arcs from the sketch."""
+        elliptical_arcs = self._sketch.sketchCurves.sketchEllipticalArcs
+        for i in range(elliptical_arcs.count):
+            arc = elliptical_arcs.item(i)
+
+            # Skip reference geometry
+            if arc.isReference:
+                continue
+
+            center = self._point3d_to_point2d(arc.centerSketchPoint.geometry)
+
+            # Get the arc geometry
+            geom = arc.geometry
+            major_radius = geom.majorRadius * CM_TO_MM
+            minor_radius = geom.minorRadius * CM_TO_MM
+
+            # Get rotation from major axis direction
+            major_axis = geom.majorAxis
+            rotation = math.atan2(major_axis.y, major_axis.x)
+
+            # Get parametric angles
+            start_param = geom.startAngle
+            end_param = geom.endAngle
+
+            # Determine CCW from sweep direction
+            ccw = end_param > start_param
+
+            canonical_arc = EllipticalArc(
+                center=center,
+                major_radius=major_radius,
+                minor_radius=minor_radius,
+                rotation=rotation,
+                start_param=start_param,
+                end_param=end_param,
+                ccw=ccw,
+                construction=arc.isConstruction
+            )
+
+            prim_id = doc.add_primitive(canonical_arc)
+            self._id_to_entity[prim_id] = arc
+            self._entity_to_id[arc.entityToken] = prim_id
 
     def _export_points(self, doc: SketchDocument) -> None:
         """Export all sketch points from the sketch.

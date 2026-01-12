@@ -19,6 +19,8 @@ from sketch_canonical import (
     Circle,
     ConstraintError,
     ConstraintType,
+    Ellipse,
+    EllipticalArc,
     ExportError,
     GeometryError,
     Line,
@@ -247,6 +249,10 @@ class FreeCADAdapter(SketchBackendAdapter):
             idx = self._add_point(sketch, primitive)
         elif isinstance(primitive, Spline):
             idx = self._add_spline(sketch, primitive)
+        elif isinstance(primitive, Ellipse):
+            idx = self._add_ellipse(sketch, primitive)
+        elif isinstance(primitive, EllipticalArc):
+            idx = self._add_elliptical_arc(sketch, primitive)
         else:
             raise GeometryError(f"Unsupported primitive type: {type(primitive).__name__}")
 
@@ -324,6 +330,69 @@ class FreeCADAdapter(SketchBackendAdapter):
             )
 
         return sketch.addGeometry(bspline, spline.construction)
+
+    def _add_ellipse(self, sketch: Any, ellipse: Ellipse) -> int:
+        """Add an ellipse to the sketch."""
+        center = App.Vector(ellipse.center.x, ellipse.center.y, 0)
+
+        # Calculate major axis endpoint (for FreeCAD ellipse construction)
+        # Major axis is at angle 'rotation' from the X-axis
+        major_axis_x = ellipse.major_radius * math.cos(ellipse.rotation)
+        major_axis_y = ellipse.major_radius * math.sin(ellipse.rotation)
+        major_point = App.Vector(
+            ellipse.center.x + major_axis_x,
+            ellipse.center.y + major_axis_y,
+            0
+        )
+
+        # Calculate minor axis endpoint (perpendicular to major axis)
+        minor_axis_x = ellipse.minor_radius * math.cos(ellipse.rotation + math.pi / 2)
+        minor_axis_y = ellipse.minor_radius * math.sin(ellipse.rotation + math.pi / 2)
+        minor_point = App.Vector(
+            ellipse.center.x + minor_axis_x,
+            ellipse.center.y + minor_axis_y,
+            0
+        )
+
+        # Create ellipse using center, major axis point, and minor axis point
+        geo = Part.Ellipse(center, major_point, minor_point)
+        return sketch.addGeometry(geo, ellipse.construction)
+
+    def _add_elliptical_arc(self, sketch: Any, arc: EllipticalArc) -> int:
+        """Add an elliptical arc to the sketch."""
+        center = App.Vector(arc.center.x, arc.center.y, 0)
+
+        # Calculate major axis endpoint
+        major_axis_x = arc.major_radius * math.cos(arc.rotation)
+        major_axis_y = arc.major_radius * math.sin(arc.rotation)
+        major_point = App.Vector(
+            arc.center.x + major_axis_x,
+            arc.center.y + major_axis_y,
+            0
+        )
+
+        # Calculate minor axis endpoint (perpendicular to major axis)
+        minor_axis_x = arc.minor_radius * math.cos(arc.rotation + math.pi / 2)
+        minor_axis_y = arc.minor_radius * math.sin(arc.rotation + math.pi / 2)
+        minor_point = App.Vector(
+            arc.center.x + minor_axis_x,
+            arc.center.y + minor_axis_y,
+            0
+        )
+
+        # Create base ellipse
+        ellipse = Part.Ellipse(center, major_point, minor_point)
+
+        # Adjust parameters for CW direction if needed
+        start_param = arc.start_param
+        end_param = arc.end_param
+        if not arc.ccw:
+            # Swap start and end for CW direction
+            start_param, end_param = end_param, start_param
+
+        # Create arc from ellipse
+        geo = Part.ArcOfEllipse(ellipse, start_param, end_param)
+        return sketch.addGeometry(geo, arc.construction)
 
     def _extract_knots_and_mults(self, knots: list[float]) -> tuple[list[float], list[int]]:
         """
@@ -462,8 +531,12 @@ class FreeCADAdapter(SketchBackendAdapter):
 
         if 'Line' in geo_type:
             return get_vertex_index(Line, point_type) or 1
+        elif 'ArcOfEllipse' in geo_type:
+            return get_vertex_index(EllipticalArc, point_type) or 1
         elif 'Arc' in geo_type:
             return get_vertex_index(Arc, point_type) or 1
+        elif 'Ellipse' in geo_type:
+            return get_vertex_index(Ellipse, point_type) or 3
         elif 'Circle' in geo_type:
             return get_vertex_index(Circle, point_type) or 3
         elif 'Point' in geo_type:
@@ -784,6 +857,8 @@ class FreeCADAdapter(SketchBackendAdapter):
         """Check if a feature is supported."""
         supported = {
             "spline": True,
+            "ellipse": True,
+            "elliptical_arc": True,
             "three_point_arc": True,
             "image_capture": True,
             "solver_status": True,
@@ -859,6 +934,51 @@ class FreeCADAdapter(SketchBackendAdapter):
                 knots=full_knots,
                 weights=weights,
                 periodic=geo.isPeriodic(),
+                construction=is_construction
+            )
+        elif 'ArcOfEllipse' in geo_type:
+            # Elliptical arc - extract base ellipse properties
+            ellipse = geo.Ellipse
+            center = ellipse.Center
+            major_radius = ellipse.MajorRadius
+            minor_radius = ellipse.MinorRadius
+
+            # Calculate rotation from the major axis direction
+            # FreeCAD ellipse MajorAxis is a vector, we need the angle
+            major_axis = ellipse.XAxis if hasattr(ellipse, 'XAxis') else App.Vector(1, 0, 0)
+            rotation = math.atan2(major_axis.y, major_axis.x)
+
+            # Get parameter range
+            start_param = geo.FirstParameter
+            end_param = geo.LastParameter
+
+            # Determine CCW based on parameter order
+            ccw = end_param > start_param
+
+            return EllipticalArc(
+                center=Point2D(center.x, center.y),
+                major_radius=major_radius,
+                minor_radius=minor_radius,
+                rotation=rotation,
+                start_param=start_param,
+                end_param=end_param,
+                ccw=ccw,
+                construction=is_construction
+            )
+        elif 'Ellipse' in geo_type and 'Arc' not in geo_type:
+            center = geo.Center
+            major_radius = geo.MajorRadius
+            minor_radius = geo.MinorRadius
+
+            # Calculate rotation from the major axis direction
+            major_axis = geo.XAxis if hasattr(geo, 'XAxis') else App.Vector(1, 0, 0)
+            rotation = math.atan2(major_axis.y, major_axis.x)
+
+            return Ellipse(
+                center=Point2D(center.x, center.y),
+                major_radius=major_radius,
+                minor_radius=minor_radius,
+                rotation=rotation,
                 construction=is_construction
             )
 
@@ -1085,8 +1205,12 @@ class FreeCADAdapter(SketchBackendAdapter):
         geo_type = type(geo).__name__
         if 'Line' in geo_type:
             return Line
+        elif 'ArcOfEllipse' in geo_type:
+            return EllipticalArc
         elif 'Arc' in geo_type:
             return Arc
+        elif 'Ellipse' in geo_type:
+            return Ellipse
         elif 'Circle' in geo_type:
             return Circle
         elif 'Point' in geo_type:

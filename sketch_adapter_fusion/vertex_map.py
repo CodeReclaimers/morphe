@@ -34,6 +34,14 @@ class VertexMap:
         # Circle points
         ("circle", PointType.CENTER): "centerSketchPoint",
 
+        # Ellipse points
+        ("ellipse", PointType.CENTER): "centerSketchPoint",
+
+        # EllipticalArc points
+        ("ellipticalarc", PointType.START): "startSketchPoint",
+        ("ellipticalarc", PointType.END): "endSketchPoint",
+        ("ellipticalarc", PointType.CENTER): "centerSketchPoint",
+
         # Point
         ("point", PointType.CENTER): "geometry",
 
@@ -140,8 +148,12 @@ def get_point_from_sketch_entity(entity, point_type: PointType):
 
     if "SketchLine" in entity_type:
         primitive_type = "line"
+    elif "SketchEllipticalArc" in entity_type:
+        primitive_type = "ellipticalarc"
     elif "SketchArc" in entity_type:
         primitive_type = "arc"
+    elif "SketchEllipse" in entity_type:
+        primitive_type = "ellipse"
     elif "SketchCircle" in entity_type:
         primitive_type = "circle"
     elif "SketchPoint" in entity_type:

@@ -39,6 +39,8 @@ from sketch_adapter_fusion import FusionAdapter
 from sketch_canonical import (
     Arc,
     Circle,
+    Ellipse,
+    EllipticalArc,
     Line,
     Point,
     Point2D,
@@ -300,6 +302,77 @@ class FusionTestRunner:
         assert isinstance(point, Point)
         assert abs(point.position.x - 25) < 0.01
         assert abs(point.position.y - 75) < 0.01
+
+    def test_single_ellipse(self):
+        """Test round-trip of a single ellipse."""
+        sketch = SketchDocument(name="EllipseTest")
+        sketch.add_primitive(Ellipse(
+            center=Point2D(50, 50),
+            major_radius=30,
+            minor_radius=20,
+            rotation=0.0
+        ))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        ellipse = list(exported.primitives.values())[0]
+        assert isinstance(ellipse, Ellipse)
+        assert abs(ellipse.center.x - 50) < 0.01
+        assert abs(ellipse.center.y - 50) < 0.01
+        assert abs(ellipse.major_radius - 30) < 0.01
+        assert abs(ellipse.minor_radius - 20) < 0.01
+
+    def test_ellipse_rotated(self):
+        """Test round-trip of a rotated ellipse."""
+        sketch = SketchDocument(name="RotatedEllipseTest")
+        sketch.add_primitive(Ellipse(
+            center=Point2D(100, 100),
+            major_radius=40,
+            minor_radius=25,
+            rotation=math.pi / 4  # 45 degrees
+        ))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        ellipse = list(exported.primitives.values())[0]
+        assert isinstance(ellipse, Ellipse)
+        assert abs(ellipse.center.x - 100) < 0.01
+        assert abs(ellipse.center.y - 100) < 0.01
+        assert abs(ellipse.major_radius - 40) < 0.01
+        assert abs(ellipse.minor_radius - 25) < 0.01
+        # Rotation should be preserved (allow some tolerance)
+        assert abs(ellipse.rotation - math.pi / 4) < 0.01
+
+    def test_single_elliptical_arc(self):
+        """Test round-trip of a single elliptical arc."""
+        sketch = SketchDocument(name="EllipticalArcTest")
+        sketch.add_primitive(EllipticalArc(
+            center=Point2D(50, 50),
+            major_radius=30,
+            minor_radius=20,
+            rotation=0.0,
+            start_param=0.0,
+            end_param=math.pi / 2,  # Quarter ellipse
+            ccw=True
+        ))
+
+        self._adapter.create_sketch(sketch.name)
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        assert len(exported.primitives) == 1
+        arc = list(exported.primitives.values())[0]
+        assert isinstance(arc, EllipticalArc)
+        assert abs(arc.center.x - 50) < 0.01
+        assert abs(arc.center.y - 50) < 0.01
+        assert abs(arc.major_radius - 30) < 0.01
+        assert abs(arc.minor_radius - 20) < 0.01
 
     # =========================================================================
     # Complex Geometry Tests

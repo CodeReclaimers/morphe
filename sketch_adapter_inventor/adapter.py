@@ -20,6 +20,8 @@ from sketch_canonical import (
     Circle,
     ConstraintError,
     ConstraintType,
+    Ellipse,
+    EllipticalArc,
     ExportError,
     GeometryError,
     Line,
@@ -262,6 +264,24 @@ class InventorAdapter(SketchBackendAdapter):
                 self._entity_to_id[id(arc)] = prim.id
                 self._id_to_entity[prim.id] = arc
 
+            # Export ellipses
+            for ellipse in sketch.SketchEllipses:
+                if self._is_reference_geometry(ellipse):
+                    continue
+                prim = self._export_ellipse(ellipse)
+                doc.add_primitive(prim)
+                self._entity_to_id[id(ellipse)] = prim.id
+                self._id_to_entity[prim.id] = ellipse
+
+            # Export elliptical arcs
+            for elliptical_arc in sketch.SketchEllipticalArcs:
+                if self._is_reference_geometry(elliptical_arc):
+                    continue
+                prim = self._export_elliptical_arc(elliptical_arc)
+                doc.add_primitive(prim)
+                self._entity_to_id[id(elliptical_arc)] = prim.id
+                self._id_to_entity[prim.id] = elliptical_arc
+
             # Export points
             for point in sketch.SketchPoints:
                 if self._is_reference_geometry(point):
@@ -329,6 +349,10 @@ class InventorAdapter(SketchBackendAdapter):
                 entity = self._add_point(primitive)
             elif isinstance(primitive, Spline):
                 entity = self._add_spline(primitive)
+            elif isinstance(primitive, Ellipse):
+                entity = self._add_ellipse(primitive)
+            elif isinstance(primitive, EllipticalArc):
+                entity = self._add_elliptical_arc(primitive)
             else:
                 raise GeometryError(f"Unsupported primitive type: {type(primitive)}")
 
@@ -424,6 +448,72 @@ class InventorAdapter(SketchBackendAdapter):
         # Use fit points method (simpler than control point method)
         # For more accurate B-spline, would need SplineControlPointDefinitions
         return splines.Add(fit_points)
+
+    def _add_ellipse(self, ellipse: Ellipse) -> Any:
+        """Add an ellipse to the sketch."""
+        assert self._sketch is not None
+        ellipses = self._sketch.SketchEllipses
+
+        center = self._app.TransientGeometry.CreatePoint2d(
+            ellipse.center.x * MM_TO_CM,
+            ellipse.center.y * MM_TO_CM
+        )
+
+        # Calculate major axis endpoint
+        major_axis_x = ellipse.major_radius * math.cos(ellipse.rotation)
+        major_axis_y = ellipse.major_radius * math.sin(ellipse.rotation)
+        major_pt = self._app.TransientGeometry.CreatePoint2d(
+            (ellipse.center.x + major_axis_x) * MM_TO_CM,
+            (ellipse.center.y + major_axis_y) * MM_TO_CM
+        )
+
+        # Calculate minor axis endpoint (perpendicular to major)
+        minor_axis_x = ellipse.minor_radius * math.cos(ellipse.rotation + math.pi / 2)
+        minor_axis_y = ellipse.minor_radius * math.sin(ellipse.rotation + math.pi / 2)
+        minor_pt = self._app.TransientGeometry.CreatePoint2d(
+            (ellipse.center.x + minor_axis_x) * MM_TO_CM,
+            (ellipse.center.y + minor_axis_y) * MM_TO_CM
+        )
+
+        # Inventor's AddByThreePoints(center, majorAxisPoint, minorAxisPoint)
+        return ellipses.Add(center, major_pt, minor_pt)
+
+    def _add_elliptical_arc(self, arc: EllipticalArc) -> Any:
+        """Add an elliptical arc to the sketch."""
+        assert self._sketch is not None
+        elliptical_arcs = self._sketch.SketchEllipticalArcs
+
+        center = self._app.TransientGeometry.CreatePoint2d(
+            arc.center.x * MM_TO_CM,
+            arc.center.y * MM_TO_CM
+        )
+
+        # Calculate major axis endpoint
+        major_axis_x = arc.major_radius * math.cos(arc.rotation)
+        major_axis_y = arc.major_radius * math.sin(arc.rotation)
+        major_pt = self._app.TransientGeometry.CreatePoint2d(
+            (arc.center.x + major_axis_x) * MM_TO_CM,
+            (arc.center.y + major_axis_y) * MM_TO_CM
+        )
+
+        # Minor axis ratio
+        minor_ratio = arc.minor_radius / arc.major_radius
+
+        # Calculate start and end points
+        start_pt_canonical = arc.start_point
+        end_pt_canonical = arc.end_point
+
+        start_pt = self._app.TransientGeometry.CreatePoint2d(
+            start_pt_canonical.x * MM_TO_CM,
+            start_pt_canonical.y * MM_TO_CM
+        )
+        end_pt = self._app.TransientGeometry.CreatePoint2d(
+            end_pt_canonical.x * MM_TO_CM,
+            end_pt_canonical.y * MM_TO_CM
+        )
+
+        # Inventor's AddByMajorMinorAxisStartEnd(center, majorAxisPoint, minorRatio, startPoint, endPoint)
+        return elliptical_arcs.Add(center, major_pt, minor_ratio, start_pt, end_pt)
 
     # =========================================================================
     # Constraint Methods
@@ -886,6 +976,90 @@ class InventorAdapter(SketchBackendAdapter):
             point.Geometry.Y * CM_TO_MM
         )
         return Point(position=pos)
+
+    def _export_ellipse(self, ellipse: Any) -> Ellipse:
+        """Export an Inventor ellipse to canonical format."""
+        center = Point2D(
+            ellipse.CenterSketchPoint.Geometry.X * CM_TO_MM,
+            ellipse.CenterSketchPoint.Geometry.Y * CM_TO_MM
+        )
+
+        # Get major and minor radii
+        major_radius = ellipse.MajorRadius * CM_TO_MM
+        minor_radius = ellipse.MinorRadius * CM_TO_MM
+
+        # Get rotation from major axis direction
+        # Inventor provides MajorAxisVector property
+        major_axis = ellipse.MajorAxisVector
+        rotation = math.atan2(major_axis.Y, major_axis.X)
+
+        return Ellipse(
+            center=center,
+            major_radius=major_radius,
+            minor_radius=minor_radius,
+            rotation=rotation,
+            construction=ellipse.Construction
+        )
+
+    def _export_elliptical_arc(self, arc: Any) -> EllipticalArc:
+        """Export an Inventor elliptical arc to canonical format."""
+        center = Point2D(
+            arc.CenterSketchPoint.Geometry.X * CM_TO_MM,
+            arc.CenterSketchPoint.Geometry.Y * CM_TO_MM
+        )
+
+        # Get major and minor radii
+        major_radius = arc.MajorRadius * CM_TO_MM
+        minor_radius = arc.MinorRadius * CM_TO_MM
+
+        # Get rotation from major axis direction
+        major_axis = arc.MajorAxisVector
+        rotation = math.atan2(major_axis.Y, major_axis.X)
+
+        # Get start and end points to calculate parametric angles
+        start_pt = Point2D(
+            arc.StartSketchPoint.Geometry.X * CM_TO_MM,
+            arc.StartSketchPoint.Geometry.Y * CM_TO_MM
+        )
+        end_pt = Point2D(
+            arc.EndSketchPoint.Geometry.X * CM_TO_MM,
+            arc.EndSketchPoint.Geometry.Y * CM_TO_MM
+        )
+
+        # Calculate parametric angles from points
+        # Transform to ellipse-local coordinates and find angle
+        def point_to_param(pt: Point2D) -> float:
+            # Translate to center
+            dx = pt.x - center.x
+            dy = pt.y - center.y
+            # Rotate by -rotation to align with axes
+            cos_r = math.cos(-rotation)
+            sin_r = math.sin(-rotation)
+            local_x = dx * cos_r - dy * sin_r
+            local_y = dx * sin_r + dy * cos_r
+            # Now local_x = major_radius * cos(t), local_y = minor_radius * sin(t)
+            return math.atan2(local_y / minor_radius, local_x / major_radius)
+
+        start_param = point_to_param(start_pt)
+        end_param = point_to_param(end_pt)
+
+        # Determine direction from sweep angle
+        try:
+            sweep = arc.SweepAngle
+            ccw = sweep > 0
+        except Exception:
+            ccw = True
+
+        return EllipticalArc(
+            center=center,
+            major_radius=major_radius,
+            minor_radius=minor_radius,
+            rotation=rotation,
+            start_param=start_param,
+            end_param=end_param,
+            ccw=ccw,
+            construction=arc.Construction
+        )
 
     def _export_geometric_constraints(self, doc: SketchDocument) -> None:
         """Export geometric constraints from Inventor sketch."""

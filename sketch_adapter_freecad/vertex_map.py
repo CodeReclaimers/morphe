@@ -12,7 +12,7 @@ The origin point uses geometry index -1, vertex 1.
 
 from dataclasses import dataclass
 
-from sketch_canonical import Arc, Circle, Line, Point, PointType, Spline
+from sketch_canonical import Arc, Circle, Ellipse, EllipticalArc, Line, Point, PointType, Spline
 
 
 @dataclass
@@ -40,6 +40,14 @@ class VertexMap:
     # Spline vertex indices
     SPLINE_START = 1
     SPLINE_END = 2
+
+    # Ellipse vertex indices (similar to Circle)
+    ELLIPSE_CENTER = 3
+
+    # EllipticalArc vertex indices (similar to Arc)
+    ELLIPTICAL_ARC_START = 1
+    ELLIPTICAL_ARC_END = 2
+    ELLIPTICAL_ARC_CENTER = 3
 
     # Origin reference
     ORIGIN_GEO_INDEX = -1
@@ -84,6 +92,16 @@ def get_vertex_index(primitive_type: type, point_type: PointType) -> int | None:
             PointType.START: VertexMap.SPLINE_START,
             PointType.END: VertexMap.SPLINE_END,
         }
+    elif primitive_type == Ellipse:
+        mapping = {
+            PointType.CENTER: VertexMap.ELLIPSE_CENTER,
+        }
+    elif primitive_type == EllipticalArc:
+        mapping = {
+            PointType.START: VertexMap.ELLIPTICAL_ARC_START,
+            PointType.END: VertexMap.ELLIPTICAL_ARC_END,
+            PointType.CENTER: VertexMap.ELLIPTICAL_ARC_CENTER,
+        }
     else:
         return None
 
@@ -124,6 +142,16 @@ def get_point_type_from_vertex(primitive_type: type, vertex_index: int) -> Point
         mapping = {
             VertexMap.SPLINE_START: PointType.START,
             VertexMap.SPLINE_END: PointType.END,
+        }
+    elif primitive_type == Ellipse:
+        mapping = {
+            VertexMap.ELLIPSE_CENTER: PointType.CENTER,
+        }
+    elif primitive_type == EllipticalArc:
+        mapping = {
+            VertexMap.ELLIPTICAL_ARC_START: PointType.START,
+            VertexMap.ELLIPTICAL_ARC_END: PointType.END,
+            VertexMap.ELLIPTICAL_ARC_CENTER: PointType.CENTER,
         }
     else:
         return None

@@ -78,6 +78,16 @@ def get_sketch_point_from_entity(entity: Any, point_type: PointType) -> Any:
         else:
             raise ValueError(f"Invalid point type {point_type} for SketchEllipse")
 
+    elif 'SketchEllipticalArc' in entity_type:
+        if point_type == PointType.START:
+            return entity.StartSketchPoint
+        elif point_type == PointType.END:
+            return entity.EndSketchPoint
+        elif point_type == PointType.CENTER:
+            return entity.CenterSketchPoint
+        else:
+            raise ValueError(f"Invalid point type {point_type} for SketchEllipticalArc")
+
     else:
         raise ValueError(f"Unknown entity type: {entity_type}")
 
@@ -128,6 +138,14 @@ def get_point_type_for_sketch_point(entity: Any, sketch_point: Any) -> PointType
             if _same_point(entity.CenterSketchPoint, sketch_point):
                 return PointType.CENTER
 
+        elif 'SketchEllipticalArc' in entity_type:
+            if _same_point(entity.StartSketchPoint, sketch_point):
+                return PointType.START
+            elif _same_point(entity.EndSketchPoint, sketch_point):
+                return PointType.END
+            elif _same_point(entity.CenterSketchPoint, sketch_point):
+                return PointType.CENTER
+
     except Exception:
         pass
 
@@ -167,15 +185,17 @@ def get_valid_point_types(entity: Any) -> list[PointType]:
 
     if 'SketchLine' in entity_type:
         return [PointType.START, PointType.END]
+    elif 'SketchEllipticalArc' in entity_type:
+        return [PointType.START, PointType.END, PointType.CENTER]
     elif 'SketchArc' in entity_type:
         return [PointType.START, PointType.END, PointType.CENTER]
+    elif 'SketchEllipse' in entity_type:
+        return [PointType.CENTER]
     elif 'SketchCircle' in entity_type:
         return [PointType.CENTER]
     elif 'SketchPoint' in entity_type:
         return [PointType.CENTER]
     elif 'SketchSpline' in entity_type:
         return [PointType.START, PointType.END]
-    elif 'SketchEllipse' in entity_type:
-        return [PointType.CENTER]
     else:
         return []

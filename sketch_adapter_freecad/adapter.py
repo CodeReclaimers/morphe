@@ -335,53 +335,35 @@ class FreeCADAdapter(SketchBackendAdapter):
         """Add an ellipse to the sketch."""
         center = App.Vector(ellipse.center.x, ellipse.center.y, 0)
 
-        # Calculate major axis endpoint (for FreeCAD ellipse construction)
-        # Major axis is at angle 'rotation' from the X-axis
-        major_axis_x = ellipse.major_radius * math.cos(ellipse.rotation)
-        major_axis_y = ellipse.major_radius * math.sin(ellipse.rotation)
-        major_point = App.Vector(
-            ellipse.center.x + major_axis_x,
-            ellipse.center.y + major_axis_y,
-            0
-        )
+        # Create ellipse with center and radii
+        # Part.Ellipse(center, major_radius, minor_radius) creates ellipse in XY plane
+        geo = Part.Ellipse(center, ellipse.major_radius, ellipse.minor_radius)
 
-        # Calculate minor axis endpoint (perpendicular to major axis)
-        minor_axis_x = ellipse.minor_radius * math.cos(ellipse.rotation + math.pi / 2)
-        minor_axis_y = ellipse.minor_radius * math.sin(ellipse.rotation + math.pi / 2)
-        minor_point = App.Vector(
-            ellipse.center.x + minor_axis_x,
-            ellipse.center.y + minor_axis_y,
-            0
-        )
+        # Apply rotation if needed by setting the XAxis direction
+        if abs(ellipse.rotation) > 1e-10:
+            # The XAxis defines the direction of the major axis
+            geo.XAxis = App.Vector(
+                math.cos(ellipse.rotation),
+                math.sin(ellipse.rotation),
+                0
+            )
 
-        # Create ellipse using center, major axis point, and minor axis point
-        geo = Part.Ellipse(center, major_point, minor_point)
         return sketch.addGeometry(geo, ellipse.construction)
 
     def _add_elliptical_arc(self, sketch: Any, arc: EllipticalArc) -> int:
         """Add an elliptical arc to the sketch."""
         center = App.Vector(arc.center.x, arc.center.y, 0)
 
-        # Calculate major axis endpoint
-        major_axis_x = arc.major_radius * math.cos(arc.rotation)
-        major_axis_y = arc.major_radius * math.sin(arc.rotation)
-        major_point = App.Vector(
-            arc.center.x + major_axis_x,
-            arc.center.y + major_axis_y,
-            0
-        )
+        # Create base ellipse with center and radii
+        ellipse = Part.Ellipse(center, arc.major_radius, arc.minor_radius)
 
-        # Calculate minor axis endpoint (perpendicular to major axis)
-        minor_axis_x = arc.minor_radius * math.cos(arc.rotation + math.pi / 2)
-        minor_axis_y = arc.minor_radius * math.sin(arc.rotation + math.pi / 2)
-        minor_point = App.Vector(
-            arc.center.x + minor_axis_x,
-            arc.center.y + minor_axis_y,
-            0
-        )
-
-        # Create base ellipse
-        ellipse = Part.Ellipse(center, major_point, minor_point)
+        # Apply rotation if needed by setting the XAxis direction
+        if abs(arc.rotation) > 1e-10:
+            ellipse.XAxis = App.Vector(
+                math.cos(arc.rotation),
+                math.sin(arc.rotation),
+                0
+            )
 
         # Adjust parameters for CW direction if needed
         start_param = arc.start_param

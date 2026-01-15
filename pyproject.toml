@@ -71,3 +71,4 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "sketch_adapter_fusion/test_scripts/*.py" = ["E402"]  # Imports after path manipulation
 "sketch_adapter_fusion/addin/*/*.py" = ["E402"]  # Imports after path setup for add-in
+"sketch_adapter_fusion/script/*/*.py" = ["E402", "N999"]  # Imports after path setup, Fusion script naming

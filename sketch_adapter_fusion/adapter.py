@@ -21,7 +21,16 @@ from sketch_canonical.adapter import (
 )
 from sketch_canonical.constraints import ConstraintType, SketchConstraint
 from sketch_canonical.document import SketchDocument, SolverStatus
-from sketch_canonical.primitives import Arc, Circle, Ellipse, EllipticalArc, Line, Point, SketchPrimitive, Spline
+from sketch_canonical.primitives import (
+    Arc,
+    Circle,
+    Ellipse,
+    EllipticalArc,
+    Line,
+    Point,
+    SketchPrimitive,
+    Spline,
+)
 from sketch_canonical.types import Point2D, PointRef, PointType
 
 from .vertex_map import VertexMap

@@ -169,8 +169,11 @@ class FusionAdapter(SketchBackendAdapter):
         try:
             doc = SketchDocument(name=self._sketch.name)
 
+            # Collect ellipse axis line tokens to skip during line export
+            ellipse_axis_tokens = self._collect_ellipse_axis_tokens()
+
             # Export all geometry
-            self._export_lines(doc)
+            self._export_lines(doc, ellipse_axis_tokens)
             self._export_arcs(doc)
             self._export_circles(doc)
             self._export_ellipses(doc)
@@ -324,10 +327,10 @@ class FusionAdapter(SketchBackendAdapter):
     def _add_ellipse(self, ellipse: Ellipse) -> Any:
         """Add an ellipse to the sketch.
 
-        Fusion 360 ellipse API: addByCenter(center, majorAxisPoint, minorAxisLength)
-        - center: Point3D at ellipse center
+        Fusion 360 ellipse API: add(centerPoint, majorAxisPoint, point)
+        - centerPoint: Point3D at ellipse center
         - majorAxisPoint: Point3D defining the major axis endpoint
-        - minorAxisLength: Distance from center to minor axis endpoint (as float)
+        - point: A Point3D that the ellipse passes through (defines minor axis)
         """
         ellipses = self._sketch.sketchCurves.sketchEllipses
 
@@ -335,49 +338,69 @@ class FusionAdapter(SketchBackendAdapter):
 
         # Calculate major axis endpoint
         # The major axis is at angle 'rotation' from the X-axis
-        major_axis_x = ellipse.major_radius * math.cos(ellipse.rotation)
-        major_axis_y = ellipse.major_radius * math.sin(ellipse.rotation)
+        cos_r = math.cos(ellipse.rotation)
+        sin_r = math.sin(ellipse.rotation)
+        major_axis_x = ellipse.major_radius * cos_r
+        major_axis_y = ellipse.major_radius * sin_r
         major_pt = self._adsk_core.Point3D.create(
             (ellipse.center.x + major_axis_x) * MM_TO_CM,
             (ellipse.center.y + major_axis_y) * MM_TO_CM,
             0
         )
 
-        # Minor axis length in cm
-        minor_axis_cm = ellipse.minor_radius * MM_TO_CM
+        # Calculate a point on the ellipse (use minor axis endpoint)
+        # Minor axis is perpendicular to major axis (rotation + 90 degrees)
+        minor_axis_x = -ellipse.minor_radius * sin_r
+        minor_axis_y = ellipse.minor_radius * cos_r
+        minor_pt = self._adsk_core.Point3D.create(
+            (ellipse.center.x + minor_axis_x) * MM_TO_CM,
+            (ellipse.center.y + minor_axis_y) * MM_TO_CM,
+            0
+        )
 
-        return ellipses.addByCenter(center_pt, major_pt, minor_axis_cm)
+        return ellipses.add(center_pt, major_pt, minor_pt)
 
     def _add_elliptical_arc(self, arc: EllipticalArc) -> Any:
         """Add an elliptical arc to the sketch.
 
-        Fusion 360 API: addByCenter(center, majorAxisPoint, minorAxisLength, startAngle, sweepAngle)
+        Fusion 360 API: addByAngle(centerPoint, majorAxis, minorAxis, startAngle, sweepAngle)
+        - centerPoint: Point3D at ellipse center
+        - majorAxis: Vector3D defining major axis direction and magnitude (= major radius)
+        - minorAxis: Vector3D defining minor axis direction and magnitude (= minor radius)
+        - startAngle: Start angle in radians (0 = along major axis)
+        - sweepAngle: Sweep angle in radians (positive = CCW)
         """
         elliptical_arcs = self._sketch.sketchCurves.sketchEllipticalArcs
 
         center_pt = self._point2d_to_point3d(arc.center)
 
-        # Calculate major axis endpoint
-        major_axis_x = arc.major_radius * math.cos(arc.rotation)
-        major_axis_y = arc.major_radius * math.sin(arc.rotation)
-        major_pt = self._adsk_core.Point3D.create(
-            (arc.center.x + major_axis_x) * MM_TO_CM,
-            (arc.center.y + major_axis_y) * MM_TO_CM,
+        # Calculate major axis vector (direction and magnitude)
+        cos_r = math.cos(arc.rotation)
+        sin_r = math.sin(arc.rotation)
+        major_axis = self._adsk_core.Vector3D.create(
+            arc.major_radius * cos_r * MM_TO_CM,
+            arc.major_radius * sin_r * MM_TO_CM,
             0
         )
 
-        # Minor axis length in cm
-        minor_axis_cm = arc.minor_radius * MM_TO_CM
+        # Calculate minor axis vector (perpendicular to major, direction and magnitude)
+        minor_axis = self._adsk_core.Vector3D.create(
+            -arc.minor_radius * sin_r * MM_TO_CM,
+            arc.minor_radius * cos_r * MM_TO_CM,
+            0
+        )
 
         # Calculate sweep angle
         sweep = arc.sweep_param
+        if not arc.ccw:
+            sweep = -sweep
 
         # Fusion uses start angle from major axis direction
         # Our start_param is already the parametric angle
         start_angle = arc.start_param
 
-        return elliptical_arcs.addByCenter(
-            center_pt, major_pt, minor_axis_cm,
+        return elliptical_arcs.addByAngle(
+            center_pt, major_axis, minor_axis,
             start_angle, sweep
         )
 
@@ -1167,14 +1190,44 @@ class FusionAdapter(SketchBackendAdapter):
 
     # Export helper methods
 
-    def _export_lines(self, doc: SketchDocument) -> None:
-        """Export all lines from the sketch."""
+    def _collect_ellipse_axis_tokens(self) -> set:
+        """Collect entity tokens for ellipse axis lines to skip during export.
+
+        Fusion 360 creates major and minor axis lines for each ellipse.
+        These should not be exported as separate line primitives.
+        """
+        tokens = set()
+        ellipses = self._sketch.sketchCurves.sketchEllipses
+        for i in range(ellipses.count):
+            ellipse = ellipses.item(i)
+            # Collect major axis line token if it exists
+            if ellipse.majorAxisLine:
+                tokens.add(ellipse.majorAxisLine.entityToken)
+            # Collect minor axis line token if it exists
+            if ellipse.minorAxisLine:
+                tokens.add(ellipse.minorAxisLine.entityToken)
+        return tokens
+
+    def _export_lines(self, doc: SketchDocument, skip_tokens: set = None) -> None:
+        """Export all lines from the sketch.
+
+        Args:
+            doc: The SketchDocument to add lines to
+            skip_tokens: Optional set of entity tokens to skip (e.g., ellipse axis lines)
+        """
+        if skip_tokens is None:
+            skip_tokens = set()
+
         lines = self._sketch.sketchCurves.sketchLines
         for i in range(lines.count):
             line = lines.item(i)
 
             # Skip reference geometry (origin X/Y axes)
             if line.isReference:
+                continue
+
+            # Skip ellipse axis lines
+            if line.entityToken in skip_tokens:
                 continue
 
             start = self._point3d_to_point2d(line.startSketchPoint.geometry)
@@ -1261,13 +1314,12 @@ class FusionAdapter(SketchBackendAdapter):
 
             center = self._point3d_to_point2d(ellipse.centerSketchPoint.geometry)
 
-            # Get the ellipse geometry to extract major/minor radii and rotation
-            geom = ellipse.geometry
-            major_radius = geom.majorRadius * CM_TO_MM
-            minor_radius = geom.minorRadius * CM_TO_MM
+            # Use SketchEllipse properties directly for better accuracy
+            major_radius = ellipse.majorAxisRadius * CM_TO_MM
+            minor_radius = ellipse.minorAxisRadius * CM_TO_MM
 
-            # Get rotation from major axis direction
-            major_axis = geom.majorAxis
+            # Get rotation from major axis direction vector
+            major_axis = ellipse.majorAxis
             rotation = math.atan2(major_axis.y, major_axis.x)
 
             canonical_ellipse = Ellipse(

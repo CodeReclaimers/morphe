@@ -24,9 +24,9 @@ from enum import Enum
 from pathlib import Path
 
 # Add the project root to path for imports
-# Adjust this path based on where you've installed the canonical_sketch package
-SCRIPT_DIR = Path(__file__).parent
-PROJECT_ROOT = SCRIPT_DIR.parent.parent
+# Use resolve() to follow the symlink to the actual source location
+SCRIPT_DIR = Path(__file__).resolve().parent  # .../script/CanonicalSketchTests
+PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent  # .../canonical_sketch
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

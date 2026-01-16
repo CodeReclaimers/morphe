@@ -445,8 +445,7 @@ def import_sketch(
             except Exception:
                 plane_to_use = "XY"
 
-        adapter.create_sketch(sketch_doc.name, plane=plane_to_use)
-        adapter.load_sketch(sketch_doc)
+        adapter.load_sketch(sketch_doc, plane=plane_to_use)
 
         return adapter._sketch.name
 

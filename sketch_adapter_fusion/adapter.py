@@ -134,7 +134,7 @@ class FusionAdapter(SketchBackendAdapter):
         except Exception as e:
             raise SketchCreationError(f"Failed to create sketch: {e}") from e
 
-    def load_sketch(self, sketch: SketchDocument) -> None:
+    def load_sketch(self, sketch: SketchDocument, plane=None) -> None:
         """Load a SketchDocument into a new Fusion 360 sketch.
 
         Creates a new sketch and populates it with the primitives and
@@ -142,6 +142,10 @@ class FusionAdapter(SketchBackendAdapter):
 
         Args:
             sketch: The SketchDocument to load
+            plane: Optional plane specification. Can be:
+                - None: Uses XY construction plane
+                - "XY", "XZ", "YZ": Standard construction planes
+                - A Fusion 360 ConstructionPlane or BRepFace object
 
         Raises:
             SketchCreationError: If sketch creation fails
@@ -149,7 +153,7 @@ class FusionAdapter(SketchBackendAdapter):
             ConstraintError: If constraint creation fails
         """
         # Create the sketch
-        self.create_sketch(sketch.name)
+        self.create_sketch(sketch.name, plane=plane)
 
         # Add all primitives
         for _prim_id, primitive in sketch.primitives.items():
@@ -193,6 +197,10 @@ class FusionAdapter(SketchBackendAdapter):
             # Export constraints
             self._export_geometric_constraints(doc)
             self._export_dimensional_constraints(doc)
+
+            # Synthesize coincident constraints from shared sketch points
+            # (Fusion often merges coincident points rather than keeping explicit constraints)
+            self._synthesize_coincident_constraints(doc)
 
             # Update solver status
             status, dof = self.get_solver_status()
@@ -296,22 +304,43 @@ class FusionAdapter(SketchBackendAdapter):
     def _add_spline(self, spline: Spline) -> Any:
         """Add a spline to the sketch.
 
-        Fusion 360 supports both fitted splines (through points) and
-        control-point-based splines via NurbsCurve3D. We use the NURBS
-        approach for precise control point specification.
+        Fusion 360 supports multiple spline types:
+        - sketchControlPointSplines: Editable control point splines (degree 3 or 5 only)
+        - sketchFixedSplines: Non-editable NURBS splines (preserves exact geometry)
+        - sketchFittedSplines: Interpolating splines through fit points (RETIRED for NURBS)
+
+        We prefer control point splines for degree 3/5 with uniform knots (more native),
+        and fall back to fixed splines for other cases.
         """
         # Create a list of Point3D from the spline control points
         control_points = []
         for pole in spline.control_points:
             control_points.append(self._point2d_to_point3d(pole))
 
-        # Extract knot vector and weights
-        knots = list(spline.knots)
         degree = spline.degree
+
+        # For degree 3 or 5 non-periodic splines without custom weights,
+        # use native control point splines for better round-trip fidelity
+        if degree in (3, 5) and not spline.periodic and not spline.weights:
+            try:
+                # SplineDegrees enum: 3 = CubicSplineDegree, 5 = QuinticSplineDegree
+                if degree == 3:
+                    spline_degree = self._adsk_fusion.SplineDegrees.CubicSplineDegree
+                else:
+                    spline_degree = self._adsk_fusion.SplineDegrees.QuinticSplineDegree
+
+                splines = self._sketch.sketchCurves.sketchControlPointSplines
+                return splines.add(control_points, spline_degree)
+            except Exception:
+                # Fall through to fixed spline approach
+                pass
+
+        # For other splines (periodic, weighted, or other degrees),
+        # use fixed splines which preserve exact NURBS geometry
+        knots = list(spline.knots)
         weights = list(spline.weights) if spline.weights else [1.0] * len(spline.control_points)
 
         # Create the NURBS curve (transient geometry)
-        # NurbsCurve3D methods expect Python lists, not ObjectCollections
         if spline.weights:
             nurbs_curve = self._adsk_core.NurbsCurve3D.createRational(
                 control_points,
@@ -328,9 +357,8 @@ class FusionAdapter(SketchBackendAdapter):
                 spline.periodic
             )
 
-        # Add as a fitted spline using the NURBS curve
-        # Note: addByNurbsCurve is on sketchFittedSplines collection
-        splines = self._sketch.sketchCurves.sketchFittedSplines
+        # Use sketchFixedSplines (not the RETIRED sketchFittedSplines.addByNurbsCurve)
+        splines = self._sketch.sketchCurves.sketchFixedSplines
         return splines.addByNurbsCurve(nurbs_curve)
 
     def _add_ellipse(self, ellipse: Ellipse) -> Any:
@@ -945,8 +973,61 @@ class FusionAdapter(SketchBackendAdapter):
         line1 = self._get_entity_for_ref(refs[0])
         line2 = self._get_entity_for_ref(refs[1])
 
-        # Find intersection point for text placement
-        text_pt = self._adsk_core.Point3D.create(0, 0, 0)
+        # Calculate text position in the angle "wedge" between the lines
+        # This helps Fusion select the correct angle quadrant
+        try:
+            # Get line directions
+            start1 = line1.startSketchPoint.geometry
+            end1 = line1.endSketchPoint.geometry
+            start2 = line2.startSketchPoint.geometry
+            end2 = line2.endSketchPoint.geometry
+
+            dir1 = self._adsk_core.Vector3D.create(end1.x - start1.x, end1.y - start1.y, 0)
+            dir2 = self._adsk_core.Vector3D.create(end2.x - start2.x, end2.y - start2.y, 0)
+
+            dir1.normalize()
+            dir2.normalize()
+
+            # Find common point (intersection or shared endpoint)
+            common_pt = None
+            if abs(start1.x - start2.x) < 0.001 and abs(start1.y - start2.y) < 0.001:
+                common_pt = start1
+            elif abs(start1.x - end2.x) < 0.001 and abs(start1.y - end2.y) < 0.001:
+                common_pt = start1
+            elif abs(end1.x - start2.x) < 0.001 and abs(end1.y - start2.y) < 0.001:
+                common_pt = end1
+            elif abs(end1.x - end2.x) < 0.001 and abs(end1.y - end2.y) < 0.001:
+                common_pt = end1
+            else:
+                # Use midpoint of line1 as fallback
+                common_pt = self._adsk_core.Point3D.create(
+                    (start1.x + end1.x) / 2,
+                    (start1.y + end1.y) / 2,
+                    0
+                )
+
+            # Place text position in the angle bisector direction (between the two lines)
+            bisector_x = dir1.x + dir2.x
+            bisector_y = dir1.y + dir2.y
+            bisector_len = math.sqrt(bisector_x**2 + bisector_y**2)
+            if bisector_len > 0.001:
+                bisector_x /= bisector_len
+                bisector_y /= bisector_len
+            else:
+                # Lines are parallel or anti-parallel, use perpendicular
+                bisector_x = -dir1.y
+                bisector_y = dir1.x
+
+            # Offset from common point along bisector
+            offset = 0.5  # cm
+            text_pt = self._adsk_core.Point3D.create(
+                common_pt.x + bisector_x * offset,
+                common_pt.y + bisector_y * offset,
+                0
+            )
+        except Exception:
+            # Fallback to origin
+            text_pt = self._adsk_core.Point3D.create(0, 0, 0)
 
         dim = dims.addAngularDimension(line1, line2, text_pt)
         dim.parameter.value = angle_rad
@@ -1418,13 +1499,19 @@ class FusionAdapter(SketchBackendAdapter):
 
     def _export_splines(self, doc: SketchDocument) -> None:
         """Export all splines from the sketch."""
-        # Export fitted splines
+        # Export control point splines (native Fusion splines with control points)
+        ctrl_pt_splines = self._sketch.sketchCurves.sketchControlPointSplines
+        for i in range(ctrl_pt_splines.count):
+            spline = ctrl_pt_splines.item(i)
+            self._export_single_spline(doc, spline)
+
+        # Export fitted splines (interpolating splines through fit points)
         fitted_splines = self._sketch.sketchCurves.sketchFittedSplines
         for i in range(fitted_splines.count):
             spline = fitted_splines.item(i)
             self._export_single_spline(doc, spline)
 
-        # Export fixed splines (NURBS)
+        # Export fixed splines (non-editable NURBS splines)
         fixed_splines = self._sketch.sketchCurves.sketchFixedSplines
         for i in range(fixed_splines.count):
             spline = fixed_splines.item(i)
@@ -1745,6 +1832,21 @@ class FusionAdapter(SketchBackendAdapter):
         line = constraint.midPointCurve
         point_id = self._get_id_for_entity_or_parent(point)
         line_id = self._get_id_for_entity(line)
+
+        # If point lookup failed, try to find a matching standalone point by position
+        if not point_id and point:
+            try:
+                point_pos = point.geometry
+                for prim_id, entity in self._id_to_entity.items():
+                    if hasattr(entity, "objectType") and "SketchPoint" in entity.objectType:
+                        entity_pos = entity.geometry
+                        if (abs(entity_pos.x - point_pos.x) < 0.0001 and
+                            abs(entity_pos.y - point_pos.y) < 0.0001):
+                            point_id = prim_id
+                            break
+            except Exception:
+                pass
+
         if point_id and line_id:
             ref = self._point_to_ref(point, point_id)
             return SketchConstraint(
@@ -1921,3 +2023,112 @@ class FusionAdapter(SketchBackendAdapter):
                     value=value
                 )
         return None
+
+    def _synthesize_coincident_constraints(self, doc: SketchDocument) -> None:
+        """Synthesize coincident constraints from coincident sketch points.
+
+        Fusion 360 may not maintain explicit coincident constraints for points
+        that are at the same position. This method detects points at the same
+        position and generates coincident constraints to preserve the topological
+        relationships during round-trips.
+        """
+        # Build a list of all point references with their positions
+        # Each entry is (x, y, PointRef)
+        point_refs_with_pos: list[tuple[float, float, PointRef]] = []
+
+        for prim_id, entity in self._id_to_entity.items():
+            obj_type = entity.objectType if hasattr(entity, "objectType") else ""
+
+            try:
+                if "SketchLine" in obj_type:
+                    start_pt = entity.startSketchPoint
+                    end_pt = entity.endSketchPoint
+                    if start_pt:
+                        pos = start_pt.geometry
+                        point_refs_with_pos.append((pos.x, pos.y, PointRef(prim_id, PointType.START)))
+                    if end_pt:
+                        pos = end_pt.geometry
+                        point_refs_with_pos.append((pos.x, pos.y, PointRef(prim_id, PointType.END)))
+
+                elif "SketchArc" in obj_type:
+                    start_pt = entity.startSketchPoint
+                    end_pt = entity.endSketchPoint
+                    center_pt = entity.centerSketchPoint
+                    if start_pt:
+                        pos = start_pt.geometry
+                        point_refs_with_pos.append((pos.x, pos.y, PointRef(prim_id, PointType.START)))
+                    if end_pt:
+                        pos = end_pt.geometry
+                        point_refs_with_pos.append((pos.x, pos.y, PointRef(prim_id, PointType.END)))
+                    if center_pt:
+                        pos = center_pt.geometry
+                        point_refs_with_pos.append((pos.x, pos.y, PointRef(prim_id, PointType.CENTER)))
+
+                elif "SketchCircle" in obj_type:
+                    center_pt = entity.centerSketchPoint
+                    if center_pt:
+                        pos = center_pt.geometry
+                        point_refs_with_pos.append((pos.x, pos.y, PointRef(prim_id, PointType.CENTER)))
+
+                elif "SketchPoint" in obj_type:
+                    pos = entity.geometry
+                    point_refs_with_pos.append((pos.x, pos.y, PointRef(prim_id, PointType.CENTER)))
+            except Exception:
+                continue
+
+        # Track which coincident pairs we've already seen (to avoid duplicates)
+        existing_coincidents: set[tuple[str, str, str, str]] = set()
+
+        # Check existing coincident constraints in the document
+        for constraint in doc.constraints:
+            if constraint.constraint_type == ConstraintType.COINCIDENT:
+                refs = constraint.references
+                if len(refs) == 2:
+                    ref1, ref2 = refs
+                    if isinstance(ref1, PointRef) and isinstance(ref2, PointRef):
+                        key = tuple(sorted([
+                            (ref1.element_id, ref1.point_type.value),
+                            (ref2.element_id, ref2.point_type.value)
+                        ]))
+                        existing_coincidents.add((key[0][0], key[0][1], key[1][0], key[1][1]))
+
+        # Group points by position (within tolerance)
+        tolerance = 0.0001  # cm (Fusion internal units)
+        position_groups: dict[tuple[float, float], list[PointRef]] = {}
+
+        for x, y, ref in point_refs_with_pos:
+            # Find existing group within tolerance
+            found_group = None
+            for (gx, gy) in position_groups.keys():
+                if abs(x - gx) < tolerance and abs(y - gy) < tolerance:
+                    found_group = (gx, gy)
+                    break
+
+            if found_group:
+                position_groups[found_group].append(ref)
+            else:
+                position_groups[(x, y)] = [ref]
+
+        # Generate coincident constraints for points at the same position
+        for _pos, refs in position_groups.items():
+            if len(refs) > 1:
+                # Multiple primitives have points at this position
+                # Chain them: ref[0]-ref[1], ref[1]-ref[2], etc.
+                for i in range(len(refs) - 1):
+                    ref1 = refs[i]
+                    ref2 = refs[i + 1]
+
+                    # Create normalized key to check for duplicates
+                    key = tuple(sorted([
+                        (ref1.element_id, ref1.point_type.value),
+                        (ref2.element_id, ref2.point_type.value)
+                    ]))
+                    constraint_key = (key[0][0], key[0][1], key[1][0], key[1][1])
+
+                    if constraint_key not in existing_coincidents:
+                        doc.add_constraint(SketchConstraint(
+                            id=self._generate_constraint_id(),
+                            constraint_type=ConstraintType.COINCIDENT,
+                            references=[ref1, ref2]
+                        ))
+                        existing_coincidents.add(constraint_key)

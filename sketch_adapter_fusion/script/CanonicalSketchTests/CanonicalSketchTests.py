@@ -225,7 +225,6 @@ class FusionTestRunner:
         ))
 
         # Load into Fusion
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
 
         # Export back
@@ -249,7 +248,6 @@ class FusionTestRunner:
             radius=25
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -270,7 +268,6 @@ class FusionTestRunner:
             ccw=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -293,7 +290,6 @@ class FusionTestRunner:
         sketch = SketchDocument(name="PointTest")
         sketch.add_primitive(Point(position=Point2D(25, 75)))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -313,7 +309,6 @@ class FusionTestRunner:
             rotation=0.0
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -335,7 +330,6 @@ class FusionTestRunner:
             rotation=math.pi / 4  # 45 degrees
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -362,7 +356,6 @@ class FusionTestRunner:
             ccw=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -387,7 +380,6 @@ class FusionTestRunner:
         sketch.add_primitive(Line(start=Point2D(100, 50), end=Point2D(0, 50)))
         sketch.add_primitive(Line(start=Point2D(0, 50), end=Point2D(0, 0)))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -408,7 +400,6 @@ class FusionTestRunner:
         sketch.add_primitive(Circle(center=Point2D(100, 50), radius=20))
         sketch.add_primitive(Point(position=Point2D(0, 50)))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -434,7 +425,6 @@ class FusionTestRunner:
             construction=False
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -458,7 +448,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Horizontal(line_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -475,7 +464,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Vertical(line_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -492,7 +480,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Radius(circle_id, 50))  # Constrain to radius 50
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -508,7 +495,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Diameter(circle_id, 80))  # Constrain to diameter 80 (radius 40)
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -531,7 +517,6 @@ class FusionTestRunner:
             PointRef(l2, PointType.START)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -555,7 +540,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Parallel(l1, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -589,7 +573,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Perpendicular(l1, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -622,7 +605,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Equal(l1, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -647,7 +629,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Concentric(c1, c2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -669,7 +650,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Length(line_id, 100))  # Constrain to length 100
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -690,7 +670,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Angle(l1, l2, 45))  # Constrain to 45 degrees
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -731,7 +710,6 @@ class FusionTestRunner:
         )
         sketch.add_primitive(spline)
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -755,7 +733,6 @@ class FusionTestRunner:
         )
         sketch.add_primitive(spline)
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -791,7 +768,6 @@ class FusionTestRunner:
         sketch.add_constraint(Coincident(PointRef(l3, PointType.END), PointRef(l4, PointType.START)))
         sketch.add_constraint(Coincident(PointRef(l4, PointType.END), PointRef(l1, PointType.START)))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -821,7 +797,6 @@ class FusionTestRunner:
             ccw=False  # Clockwise
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -844,7 +819,6 @@ class FusionTestRunner:
             ccw=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -861,7 +835,6 @@ class FusionTestRunner:
         sketch.add_primitive(Circle(center=Point2D(0, 0), radius=25))
         sketch.add_primitive(Line(start=Point2D(-50, 0), end=Point2D(50, 0)))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -880,7 +853,6 @@ class FusionTestRunner:
         ))
         sketch.add_primitive(Circle(center=Point2D(1, 1), radius=0.05))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -900,7 +872,6 @@ class FusionTestRunner:
         ))
         sketch.add_primitive(Circle(center=Point2D(500, 500), radius=250))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -920,7 +891,6 @@ class FusionTestRunner:
         ))
         sketch.add_primitive(Circle(center=Point2D(-50, -50), radius=30))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -941,7 +911,6 @@ class FusionTestRunner:
             end=Point2D(100, 100)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -968,7 +937,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Tangent(line_id, circle_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1002,7 +970,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Tangent(arc_id, line_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1021,7 +988,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Collinear(l1, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1041,7 +1007,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Fixed(line_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1070,7 +1035,6 @@ class FusionTestRunner:
             20
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1099,7 +1063,6 @@ class FusionTestRunner:
             PointRef(l2, PointType.START)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1128,7 +1091,6 @@ class FusionTestRunner:
             PointRef(l2, PointType.START)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1159,7 +1121,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Symmetric(l1, l2, center_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1187,7 +1148,6 @@ class FusionTestRunner:
             line_id
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1220,7 +1180,6 @@ class FusionTestRunner:
         )
         sketch.add_primitive(spline)
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1245,7 +1204,6 @@ class FusionTestRunner:
         )
         sketch.add_primitive(spline)
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1271,7 +1229,6 @@ class FusionTestRunner:
         sketch.add_constraint(Coincident(PointRef(l2, PointType.END), PointRef(l3, PointType.START)))
         sketch.add_constraint(Coincident(PointRef(l3, PointType.END), PointRef(l1, PointType.START)))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1303,7 +1260,6 @@ class FusionTestRunner:
         # Inner circle centered in rectangle
         sketch.add_primitive(Circle(center=Point2D(50, 40), radius=25))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1324,7 +1280,6 @@ class FusionTestRunner:
         sketch.add_constraint(Concentric(c1, c2))
         sketch.add_constraint(Concentric(c2, c3))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1360,7 +1315,6 @@ class FusionTestRunner:
             ccw=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1378,7 +1332,6 @@ class FusionTestRunner:
             end=Point2D(100, 50)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1396,7 +1349,6 @@ class FusionTestRunner:
         # Fix the line completely
         sketch.add_constraint(Fixed(line_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1414,7 +1366,6 @@ class FusionTestRunner:
         sketch.add_primitive(Point(position=Point2D(50, 60)))
         sketch.add_primitive(Point(position=Point2D(90, 30)))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1432,7 +1383,6 @@ class FusionTestRunner:
             construction=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1446,7 +1396,6 @@ class FusionTestRunner:
         c2 = sketch.add_primitive(Circle(center=Point2D(80, 30), radius=35))
         sketch.add_constraint(Equal(c1, c2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1467,7 +1416,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Horizontal(line_id))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1483,7 +1431,6 @@ class FusionTestRunner:
         l2 = sketch.add_primitive(Line(start=Point2D(25, 0), end=Point2D(30, 40)))
         sketch.add_constraint(Perpendicular(l1, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1506,7 +1453,6 @@ class FusionTestRunner:
         ))
         sketch.add_constraint(Length(line_id, 75.0))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1531,7 +1477,6 @@ class FusionTestRunner:
         sketch.add_constraint(Horizontal(line_id))
         sketch.add_constraint(Length(line_id, 60.0))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1552,7 +1497,6 @@ class FusionTestRunner:
         sketch.add_constraint(Vertical(line_id))
         sketch.add_constraint(Length(line_id, 80.0))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1571,7 +1515,6 @@ class FusionTestRunner:
         sketch.add_constraint(Concentric(c1, c2))
         sketch.add_constraint(Equal(c1, c2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1599,7 +1542,6 @@ class FusionTestRunner:
             line_id
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1632,7 +1574,6 @@ class FusionTestRunner:
             PointRef(line_id, PointType.END)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1658,7 +1599,6 @@ class FusionTestRunner:
             PointRef(circle_id, PointType.CENTER)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1706,7 +1646,6 @@ class FusionTestRunner:
             periodic=False  # Use non-periodic with closed endpoints
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1734,7 +1673,6 @@ class FusionTestRunner:
             ccw=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1758,7 +1696,6 @@ class FusionTestRunner:
             ccw=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1785,7 +1722,6 @@ class FusionTestRunner:
             ccw=True
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1822,7 +1758,6 @@ class FusionTestRunner:
             weights=weights
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1839,7 +1774,6 @@ class FusionTestRunner:
         sketch = SketchDocument(name="EmptySketchTest")
         # No primitives added
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1861,7 +1795,6 @@ class FusionTestRunner:
         precise_length = 47.123456
         sketch.add_constraint(Length(line_id, precise_length))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1881,7 +1814,6 @@ class FusionTestRunner:
         precise_radius = 33.789012
         sketch.add_constraint(Radius(circle_id, precise_radius))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1897,7 +1829,6 @@ class FusionTestRunner:
         precise_angle = 37.5  # degrees
         sketch.add_constraint(Angle(l1, l2, precise_angle))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1924,7 +1855,6 @@ class FusionTestRunner:
         l3 = sketch.add_primitive(Line(start=Point2D(0, 40), end=Point2D(70, 40)))
         sketch.add_constraint(Equal(l1, l2, l3))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1948,7 +1878,6 @@ class FusionTestRunner:
         c4 = sketch.add_primitive(Circle(center=Point2D(60, 60), radius=25))
         sketch.add_constraint(Equal(c1, c2, c3, c4))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -1982,7 +1911,6 @@ class FusionTestRunner:
         sketch.add_constraint(Tangent(l1, arc))
         sketch.add_constraint(Tangent(arc, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2015,7 +1943,6 @@ class FusionTestRunner:
         sketch.add_constraint(Tangent(l1, arc))
         sketch.add_constraint(Tangent(arc, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2035,7 +1962,6 @@ class FusionTestRunner:
             end=Point2D(0.01, 0.01)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2051,7 +1977,6 @@ class FusionTestRunner:
             end=Point2D(1000, 1000)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2075,7 +2000,6 @@ class FusionTestRunner:
             PointRef(l3, PointType.START)
         ))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2102,7 +2026,6 @@ class FusionTestRunner:
         sketch.add_constraint(Horizontal(l1))
         sketch.add_constraint(Horizontal(l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2135,7 +2058,6 @@ class FusionTestRunner:
         sketch.add_constraint(Horizontal(l3))
         sketch.add_constraint(Vertical(l4))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2159,7 +2081,6 @@ class FusionTestRunner:
         circle_id = sketch.add_primitive(Circle(center=Point2D(50, 50), radius=20))
         sketch.add_constraint(Diameter(circle_id, 60))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2187,7 +2108,6 @@ class FusionTestRunner:
         sketch.add_constraint(Length(l1, 100))
         sketch.add_constraint(Diameter(circle, 40))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2203,7 +2123,6 @@ class FusionTestRunner:
         l2 = sketch.add_primitive(Line(start=Point2D(0, 30), end=Point2D(50, 30)))
         sketch.add_constraint(Parallel(l1, l2))
 
-        self._adapter.create_sketch(sketch.name)
         self._adapter.load_sketch(sketch)
         exported = self._adapter.export_sketch()
 
@@ -2222,6 +2141,224 @@ class FusionTestRunner:
                 if isinstance(ref, str):
                     assert ref in primitive_ids, \
                         f"Constraint references unknown primitive: {ref}"
+
+    # =========================================================================
+    # Export Regression Tests (SketchBridge Demo Issues)
+    # =========================================================================
+
+    def test_arc_clockwise_direction_preserved(self):
+        """Test that clockwise arc direction is preserved during export.
+
+        Regression test for: Arc with ccw=False being exported with ccw=True
+        due to simple angle comparison that doesn't handle angle wraparound.
+        """
+        sketch = SketchDocument(name="ArcCWRegressionTest")
+        # Clockwise arc similar to demo's arc_cw
+        # This arc goes from (67, 4) to (73, 4) clockwise around center (70, 12.5)
+        sketch.add_primitive(Arc(
+            center=Point2D(70, 12.5),
+            start_point=Point2D(67, 4),
+            end_point=Point2D(73, 4),
+            ccw=False  # Clockwise
+        ))
+
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+        assert len(arcs) == 1, f"Expected 1 arc, got {len(arcs)}"
+
+        arc = arcs[0]
+        # Verify center is approximately correct
+        assert abs(arc.center.x - 70) < 0.5, f"Center X should be ~70, got {arc.center.x}"
+        assert abs(arc.center.y - 12.5) < 0.5, f"Center Y should be ~12.5, got {arc.center.y}"
+
+        # The arc should still be clockwise (ccw=False)
+        # OR if start/end are swapped, ccw should be True (which represents same physical curve)
+        if arc.ccw:
+            # Reversed: start and end should be swapped
+            assert abs(arc.start_point.x - 73) < 0.5, \
+                f"For ccw=True, start X should be ~73, got {arc.start_point.x}"
+            assert abs(arc.end_point.x - 67) < 0.5, \
+                f"For ccw=True, end X should be ~67, got {arc.end_point.x}"
+        else:
+            # Original direction
+            assert abs(arc.start_point.x - 67) < 0.5, \
+                f"For ccw=False, start X should be ~67, got {arc.start_point.x}"
+            assert abs(arc.end_point.x - 73) < 0.5, \
+                f"For ccw=False, end X should be ~73, got {arc.end_point.x}"
+
+    def test_arc_counterclockwise_direction_preserved(self):
+        """Test that counterclockwise arc direction is preserved during export."""
+        sketch = SketchDocument(name="ArcCCWRegressionTest")
+        # CCW arc
+        sketch.add_primitive(Arc(
+            center=Point2D(50, 50),
+            start_point=Point2D(75, 50),
+            end_point=Point2D(50, 75),
+            ccw=True
+        ))
+
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+        assert len(arcs) == 1, f"Expected 1 arc, got {len(arcs)}"
+        assert arcs[0].ccw is True, "CCW arc should remain CCW"
+
+    def test_arc_large_sweep_ccw(self):
+        """Test that large CCW arc (>180 degrees) is correctly exported."""
+        sketch = SketchDocument(name="LargeCCWArcRegressionTest")
+        # Large CCW arc similar to demo's arc_tangent (270 degree sweep)
+        sketch.add_primitive(Arc(
+            center=Point2D(95, 12.5),
+            start_point=Point2D(82, 12.5),
+            end_point=Point2D(95, 25.5),
+            ccw=True
+        ))
+
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        arcs = [p for p in exported.primitives.values() if isinstance(p, Arc)]
+        assert len(arcs) == 1, f"Expected 1 arc, got {len(arcs)}"
+
+        arc = arcs[0]
+        # Verify center
+        assert abs(arc.center.x - 95) < 0.5, f"Center X should be ~95, got {arc.center.x}"
+        assert abs(arc.center.y - 12.5) < 0.5, f"Center Y should be ~12.5, got {arc.center.y}"
+        # This should be CCW
+        assert arc.ccw is True, "Large CCW arc should remain CCW"
+
+    def test_vertical_line_endpoint_preserved(self):
+        """Test that vertical line endpoints are correctly preserved.
+
+        Regression test for: Vertical line being exported with wrong endpoint
+        due to internal representation issues.
+        """
+        sketch = SketchDocument(name="VerticalLineRegressionTest")
+        # Vertical line
+        sketch.add_primitive(Line(
+            start=Point2D(110, 0),
+            end=Point2D(110, 20)
+        ))
+
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 1, f"Expected 1 line, got {len(lines)}"
+
+        line = lines[0]
+        # Both X coordinates should be 110 (vertical line)
+        assert abs(line.start.x - 110) < 0.1, f"Start X should be 110, got {line.start.x}"
+        assert abs(line.end.x - 110) < 0.1, f"End X should be 110, got {line.end.x}"
+        # Y coordinates should span 0 to 20
+        y_coords = sorted([line.start.y, line.end.y])
+        assert abs(y_coords[0] - 0) < 0.1, f"Min Y should be 0, got {y_coords[0]}"
+        assert abs(y_coords[1] - 20) < 0.1, f"Max Y should be 20, got {y_coords[1]}"
+
+    def test_diagonal_line_endpoints_preserved(self):
+        """Test that diagonal line endpoints are correctly preserved."""
+        sketch = SketchDocument(name="DiagonalLineRegressionTest")
+        sketch.add_primitive(Line(
+            start=Point2D(100, -20),
+            end=Point2D(120, -35)
+        ))
+
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 1, f"Expected 1 line, got {len(lines)}"
+
+        line = lines[0]
+        # Check specific endpoints
+        assert abs(line.start.x - 100) < 0.1, f"Start X should be 100, got {line.start.x}"
+        assert abs(line.start.y - (-20)) < 0.1, f"Start Y should be -20, got {line.start.y}"
+        assert abs(line.end.x - 120) < 0.1, f"End X should be 120, got {line.end.x}"
+        assert abs(line.end.y - (-35)) < 0.1, f"End Y should be -35, got {line.end.y}"
+
+    def test_elliptical_arc_roundtrip(self):
+        """Test that elliptical arc is correctly round-tripped."""
+        sketch = SketchDocument(name="EllipticalArcRegressionTest")
+        sketch.add_primitive(EllipticalArc(
+            center=Point2D(85, -25),
+            major_radius=15,
+            minor_radius=8,
+            rotation=math.radians(-10),
+            start_param=math.radians(30),
+            end_param=math.radians(240),
+            ccw=True
+        ))
+
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        arcs = [p for p in exported.primitives.values() if isinstance(p, EllipticalArc)]
+        assert len(arcs) == 1, f"Expected 1 elliptical arc, got {len(arcs)}"
+
+        arc = arcs[0]
+        assert abs(arc.center.x - 85) < 0.5, f"Center X should be ~85, got {arc.center.x}"
+        assert abs(arc.center.y - (-25)) < 0.5, f"Center Y should be ~-25, got {arc.center.y}"
+        assert abs(arc.major_radius - 15) < 0.5, f"Major radius should be ~15, got {arc.major_radius}"
+        assert abs(arc.minor_radius - 8) < 0.5, f"Minor radius should be ~8, got {arc.minor_radius}"
+
+    def test_multiple_points_preserved(self):
+        """Test that multiple standalone points are all preserved."""
+        sketch = SketchDocument(name="MultiPointsRegressionTest")
+        sketch.add_primitive(Point(position=Point2D(5, -15)))
+        sketch.add_primitive(Point(position=Point2D(35, -15)))
+        sketch.add_primitive(Point(position=Point2D(65, -15)))
+
+        self._adapter.load_sketch(sketch)
+        exported = self._adapter.export_sketch()
+
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+        assert len(points) == 3, f"Expected 3 points, got {len(points)}"
+
+        point_xs = sorted([p.position.x for p in points])
+        assert abs(point_xs[0] - 5) < 0.5, f"First point X should be ~5, got {point_xs[0]}"
+        assert abs(point_xs[1] - 35) < 0.5, f"Second point X should be ~35, got {point_xs[1]}"
+        assert abs(point_xs[2] - 65) < 0.5, f"Third point X should be ~65, got {point_xs[2]}"
+
+    def test_load_sketch_creates_single_sketch(self):
+        """Regression: load_sketch should create exactly one sketch, not two.
+
+        Previously, calling load_sketch() would create an empty sketch and then
+        another sketch with geometry (named with "(1)" suffix). This test ensures
+        only one sketch is created with the expected name.
+        """
+        import uuid
+
+        # Use unique name to avoid conflicts with other tests
+        unique_name = f"SingleSketchTest_{uuid.uuid4().hex[:8]}"
+        sketch = SketchDocument(name=unique_name)
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(10, 10)))
+
+        # Count sketches before
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        sketches_before = design.rootComponent.sketches.count
+
+        # Load the sketch
+        self._adapter.load_sketch(sketch)
+
+        # Count sketches after
+        sketches_after = design.rootComponent.sketches.count
+
+        # Should have added exactly one sketch
+        assert sketches_after == sketches_before + 1, (
+            f"Expected 1 new sketch, got {sketches_after - sketches_before}. "
+            f"Before: {sketches_before}, After: {sketches_after}"
+        )
+
+        # The created sketch should have exactly the name we specified
+        created_name = self._adapter._sketch.name
+        assert created_name == unique_name, (
+            f"Sketch name should be '{unique_name}', got '{created_name}'. "
+            "This suggests a duplicate sketch was created."
+        )
 
 
 def run(context):

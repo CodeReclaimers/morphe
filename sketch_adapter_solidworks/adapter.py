@@ -500,15 +500,23 @@ class SolidWorksAdapter(SketchBackendAdapter):
                         doc.add_primitive(prim)
                         stored_ellipse_ids.add(geom.get('element_id', ''))
                         # Add all elliptical arc related points
+                        # SolidWorks creates points at center, start, end, and axis endpoints
                         cx, cy = prim.center.x, prim.center.y
                         rot = prim.rotation
                         cos_r, sin_r = math.cos(rot), math.sin(rot)
                         used_point_coords.add((round(cx, 6), round(cy, 6)))  # center
                         used_point_coords.add((round(prim.start_point.x, 6), round(prim.start_point.y, 6)))
                         used_point_coords.add((round(prim.end_point.x, 6), round(prim.end_point.y, 6)))
-                        # Major axis endpoint (SolidWorks may create this point)
+                        # Major axis endpoints (SolidWorks may create these)
                         used_point_coords.add((round(cx + prim.major_radius * cos_r, 6),
                                                round(cy + prim.major_radius * sin_r, 6)))
+                        used_point_coords.add((round(cx - prim.major_radius * cos_r, 6),
+                                               round(cy - prim.major_radius * sin_r, 6)))
+                        # Minor axis endpoints (perpendicular to major axis)
+                        used_point_coords.add((round(cx - prim.minor_radius * sin_r, 6),
+                                               round(cy + prim.minor_radius * cos_r, 6)))
+                        used_point_coords.add((round(cx + prim.minor_radius * sin_r, 6),
+                                               round(cy - prim.minor_radius * cos_r, 6)))
 
             # Build set of ellipse centers for skipping ellipse arc segments
             ellipse_centers: set[tuple[float, float]] = set()
@@ -629,6 +637,11 @@ class SolidWorksAdapter(SketchBackendAdapter):
                     if point_coords in exported_point_coords:
                         continue
 
+                    # Skip points that lie on or inside ellipse/elliptical arc curves
+                    # (SolidWorks creates internal vertex points on these curves)
+                    if self._point_on_ellipse_curve(prim.position.x, prim.position.y):
+                        continue
+
                     doc.add_primitive(prim)
                     self._entity_to_id[id(point)] = prim.id
                     self._id_to_entity[prim.id] = point
@@ -698,6 +711,55 @@ class SolidWorksAdapter(SketchBackendAdapter):
             return False
         except Exception:
             return False
+
+    def _point_on_ellipse_curve(self, px: float, py: float, tolerance: float = 0.5) -> bool:
+        """Check if a point lies on or near any stored ellipse or elliptical arc curve.
+
+        SolidWorks creates internal vertex/control points on ellipse curves that
+        should not be exported as standalone Point primitives.
+
+        Args:
+            px: Point X coordinate in mm
+            py: Point Y coordinate in mm
+            tolerance: Distance tolerance in mm
+
+        Returns:
+            True if the point lies on or inside an ellipse/elliptical arc region
+        """
+        for geom in self._segment_geometry_list:
+            if geom['type'] not in ('ellipse', 'elliptical_arc'):
+                continue
+
+            cx, cy = geom['center']
+            major_r = geom['major_radius']
+            minor_r = geom['minor_radius']
+            rotation = geom.get('rotation', 0.0)
+
+            # Transform point to ellipse-local coordinates
+            dx = px - cx
+            dy = py - cy
+
+            # Check if point is within the bounding region of the ellipse
+            dist_from_center = math.sqrt(dx * dx + dy * dy)
+            if dist_from_center <= major_r + tolerance:
+                # Rotate to align with ellipse axes
+                cos_r = math.cos(-rotation)
+                sin_r = math.sin(-rotation)
+                local_x = dx * cos_r - dy * sin_r
+                local_y = dx * sin_r + dy * cos_r
+
+                if major_r > 0 and minor_r > 0:
+                    # Check ellipse equation: (x/a)^2 + (y/b)^2 = 1
+                    # Points on or inside the ellipse should be filtered
+                    normalized_dist = (local_x / major_r) ** 2 + (local_y / minor_r) ** 2
+
+                    # Filter points on the ellipse curve (normalized_dist ≈ 1)
+                    # or inside the ellipse (normalized_dist < 1)
+                    curve_tolerance = tolerance / min(major_r, minor_r)
+                    if normalized_dist < 1.0 + curve_tolerance:
+                        return True
+
+        return False
 
     def _is_ellipse_arc_segment(self, segment: Any, ellipse_centers: set[tuple[float, float]]) -> bool:
         """Check if a segment is part of ellipse geometry.

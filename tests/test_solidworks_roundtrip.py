@@ -2265,3 +2265,207 @@ class TestSolidWorksConstraintExportRegression:
 
         assert horizontal_line is not None, "Should have a horizontal line"
         assert vertical_line is not None, "Should have a vertical line"
+
+
+class TestSolidWorksExportRegression:
+    """Regression tests for export edge cases discovered via SketchBridge demo.
+
+    These tests verify fixes for issues found when exporting the comprehensive
+    SketchBridge demo sketch to SolidWorks.
+    """
+
+    def test_arc_270_degrees_not_circle(self, adapter):
+        """Test that a 270-degree arc is exported as Arc, not Circle.
+
+        Regression test for: Large arcs (>180°) being incorrectly identified
+        as full circles due to arc length comparison tolerance issues.
+        """
+        sketch = SketchDocument(name="Arc270Test")
+        # 270 degree CCW arc (from right going up and around to bottom)
+        # This is similar to the tangent arc in the demo that was incorrectly exported
+        sketch.add_primitive(Arc(
+            center=Point2D(95, 12.5),
+            start_point=Point2D(82, 12.5),  # Left of center (180°)
+            end_point=Point2D(95, 25.5),    # Top of center (90°)
+            ccw=True  # Going CCW from 180° to 90° = 270° sweep
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        assert len(exported.primitives) == 1, "Should have exactly 1 primitive"
+        prim = list(exported.primitives.values())[0]
+        assert isinstance(prim, Arc), f"Should be Arc, not {type(prim).__name__}"
+        assert not isinstance(prim, Circle), "Should not be a Circle"
+
+    def test_multiple_lines_correct_endpoints(self, adapter):
+        """Test that multiple lines preserve their correct endpoints.
+
+        Regression test for: Line export matching wrong point pairs when
+        multiple lines exist in the sketch, especially with similar lengths.
+        """
+        sketch = SketchDocument(name="MultipleLinesTest")
+
+        # Create lines similar to the demo - rectangle plus angled lines
+        # Rectangle
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(40, 0)))
+        sketch.add_primitive(Line(start=Point2D(40, 0), end=Point2D(40, 25)))
+        sketch.add_primitive(Line(start=Point2D(40, 25), end=Point2D(0, 25)))
+        sketch.add_primitive(Line(start=Point2D(0, 25), end=Point2D(0, 0)))
+
+        # Angled line at 30 degrees (similar to demo's line_angled1)
+        angle_rad = math.radians(30)
+        end_x = 110 + 25 * math.cos(angle_rad)
+        end_y = 25 * math.sin(angle_rad)
+        sketch.add_primitive(Line(start=Point2D(110, 0), end=Point2D(end_x, end_y)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 5, f"Expected 5 lines, got {len(lines)}"
+
+        # Find the angled line (should have start at 110, 0)
+        angled_line = None
+        for ln in lines:
+            if abs(ln.start.x - 110) < 0.1 and abs(ln.start.y - 0) < 0.1:
+                angled_line = ln
+                break
+
+        assert angled_line is not None, "Should find angled line starting at (110, 0)"
+        # End point should be near (131.65, 12.5), not (0, 25) or other wrong point
+        assert angled_line.end.x > 120, \
+            f"Angled line end X should be > 120, got {angled_line.end.x}"
+        assert angled_line.end.y > 10, \
+            f"Angled line end Y should be > 10, got {angled_line.end.y}"
+
+    def test_no_degenerate_zero_length_lines(self, adapter):
+        """Test that no zero-length (degenerate) lines are exported.
+
+        Regression test for: SolidWorks creating internal degenerate segments
+        that get incorrectly exported as zero-length lines.
+        """
+        sketch = SketchDocument(name="DegenerateLineTest")
+
+        # Create a simple rectangle - should not produce any degenerate lines
+        sketch.add_primitive(Line(start=Point2D(0, 0), end=Point2D(50, 0)))
+        sketch.add_primitive(Line(start=Point2D(50, 0), end=Point2D(50, 30)))
+        sketch.add_primitive(Line(start=Point2D(50, 30), end=Point2D(0, 30)))
+        sketch.add_primitive(Line(start=Point2D(0, 30), end=Point2D(0, 0)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+
+        for ln in lines:
+            length = math.sqrt((ln.end.x - ln.start.x)**2 + (ln.end.y - ln.start.y)**2)
+            assert length > 0.01, \
+                f"Found degenerate line from ({ln.start.x}, {ln.start.y}) to ({ln.end.x}, {ln.end.y})"
+
+    def test_ellipse_no_extra_standalone_points(self, adapter):
+        """Test that ellipse export doesn't create extra standalone points.
+
+        Regression test for: SolidWorks internal ellipse vertex points being
+        incorrectly exported as standalone Point primitives.
+        """
+        sketch = SketchDocument(name="EllipsePointsTest")
+        sketch.add_primitive(Ellipse(
+            center=Point2D(30, -25),
+            major_radius=18,
+            minor_radius=10,
+            rotation=math.radians(15)
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Should have only 1 primitive (the ellipse)
+        ellipses = [p for p in exported.primitives.values() if isinstance(p, Ellipse)]
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+
+        assert len(ellipses) == 1, f"Expected 1 ellipse, got {len(ellipses)}"
+        assert len(points) == 0, \
+            f"Expected 0 standalone points, got {len(points)} (ellipse vertex points leaked)"
+
+    def test_elliptical_arc_no_extra_standalone_points(self, adapter):
+        """Test that elliptical arc export doesn't create extra standalone points.
+
+        Regression test for: SolidWorks internal elliptical arc vertex points
+        being incorrectly exported as standalone Point primitives.
+        """
+        sketch = SketchDocument(name="EllipticalArcPointsTest")
+        sketch.add_primitive(EllipticalArc(
+            center=Point2D(85, -25),
+            major_radius=15,
+            minor_radius=8,
+            rotation=math.radians(-10),
+            start_param=math.radians(30),
+            end_param=math.radians(240),
+            ccw=True
+        ))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        # Should have only 1 primitive (the elliptical arc)
+        arcs = [p for p in exported.primitives.values() if isinstance(p, EllipticalArc)]
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+
+        assert len(arcs) == 1, f"Expected 1 elliptical arc, got {len(arcs)}"
+        assert len(points) == 0, \
+            f"Expected 0 standalone points, got {len(points)} (arc vertex points leaked)"
+
+    def test_line_with_negative_coordinates(self, adapter):
+        """Test that lines with negative Y coordinates are correctly exported.
+
+        Regression test for: Potential issues with negative coordinate handling
+        in the line export logic.
+        """
+        sketch = SketchDocument(name="NegativeCoordLineTest")
+        # Line in negative Y region (like the midpoint_line in demo)
+        sketch.add_primitive(Line(start=Point2D(55, -15), end=Point2D(75, -15)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 1, f"Expected 1 line, got {len(lines)}"
+
+        ln = lines[0]
+        # Check coordinates are preserved
+        assert abs(ln.start.x - 55) < 0.1, f"Start X should be 55, got {ln.start.x}"
+        assert abs(ln.start.y - (-15)) < 0.1, f"Start Y should be -15, got {ln.start.y}"
+        assert abs(ln.end.x - 75) < 0.1, f"End X should be 75, got {ln.end.x}"
+        assert abs(ln.end.y - (-15)) < 0.1, f"End Y should be -15, got {ln.end.y}"
+
+    def test_multiple_standalone_points_preserved(self, adapter):
+        """Test that multiple standalone points are all preserved.
+
+        Regression test for: Some standalone points being lost during export
+        when multiple points exist in the sketch.
+        """
+        sketch = SketchDocument(name="MultiplePointsTest")
+        # Three points at different locations (like the demo's symmetric points)
+        sketch.add_primitive(Point(position=Point2D(5, -15)))
+        sketch.add_primitive(Point(position=Point2D(35, -15)))
+        sketch.add_primitive(Point(position=Point2D(65, -15)))
+
+        adapter.create_sketch(sketch.name)
+        adapter.load_sketch(sketch)
+        exported = adapter.export_sketch()
+
+        points = [p for p in exported.primitives.values() if isinstance(p, Point)]
+        assert len(points) == 3, f"Expected 3 points, got {len(points)}"
+
+        # Verify the specific positions are preserved
+        point_xs = sorted([p.position.x for p in points])
+        assert abs(point_xs[0] - 5) < 0.1, f"First point X should be 5, got {point_xs[0]}"
+        assert abs(point_xs[1] - 35) < 0.1, f"Second point X should be 35, got {point_xs[1]}"
+        assert abs(point_xs[2] - 65) < 0.1, f"Third point X should be 65, got {point_xs[2]}"

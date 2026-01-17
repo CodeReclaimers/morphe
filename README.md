@@ -1,5 +1,7 @@
 # Morphe
 
+*Pronounced "mor-FAY" (from Greek [μορφή](https://en.wiktionary.org/wiki/%CE%BC%CE%BF%CF%81%CF%86%CE%AE), meaning "form" or "shape")*
+
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://github.com/codereclaimers/morphe/actions/workflows/test.yml/badge.svg)](https://github.com/codereclaimers/morphe/actions/workflows/test.yml)

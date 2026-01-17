@@ -1,0 +1,43 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Manual trigger for TestPyPI testing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for trusted publishing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Verify package
+        run: |
+          pip install twine
+          twine check dist/*
+
+      # TestPyPI for manual runs or pre-releases
+      - name: Publish to TestPyPI
+        if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      # PyPI for full releases only
+      - name: Publish to PyPI
+        if: github.event_name == 'release' && !github.event.release.prerelease
+        uses: pypa/gh-action-pypi-publish@release/v1

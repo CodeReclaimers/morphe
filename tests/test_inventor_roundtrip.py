@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from sketch_canonical import (
+from core import (
     Angle,
     Arc,
     Circle,
@@ -45,7 +45,7 @@ from sketch_canonical import (
 
 # Try to import the Inventor adapter
 try:
-    from sketch_adapter_inventor import INVENTOR_AVAILABLE, InventorAdapter
+    from adapter_inventor import INVENTOR_AVAILABLE, InventorAdapter
 except ImportError:
     INVENTOR_AVAILABLE = False
     InventorAdapter = None  # type: ignore[misc,assignment]

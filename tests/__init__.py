@@ -1,1 +1,1 @@
-"""Test suite for sketch_canonical package."""
+"""Test suite for core package."""

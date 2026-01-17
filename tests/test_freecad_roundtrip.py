@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from sketch_canonical import (
+from core import (
     Angle,
     Arc,
     Circle,
@@ -201,8 +201,8 @@ class TestFreeCADRoundTripBasic:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 # Load input sketch
 input_json = {repr(input_json)}
@@ -254,8 +254,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -295,8 +295,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -343,8 +343,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -383,8 +383,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -425,8 +425,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -472,8 +472,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -518,8 +518,8 @@ class TestFreeCADRoundTripComplex:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -564,8 +564,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -612,8 +612,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -658,8 +658,8 @@ class TestFreeCADRoundTripConstraints:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, SolverStatus
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, SolverStatus
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -703,8 +703,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -740,8 +740,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -784,8 +784,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -839,8 +839,8 @@ class TestFreeCADRoundTripSpline:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -884,8 +884,8 @@ class TestFreeCADSolverStatus:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, SolverStatus
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, SolverStatus
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -926,8 +926,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, SolverStatus
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, SolverStatus
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -972,8 +972,8 @@ class TestFreeCADRoundTripConstraintsExtended:
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1027,8 +1027,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1079,8 +1079,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1126,8 +1126,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1168,8 +1168,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1209,8 +1209,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1265,8 +1265,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1318,8 +1318,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1365,8 +1365,8 @@ class TestFreeCADRoundTripGeometryEdgeCases:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1404,8 +1404,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line, Circle
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1443,8 +1443,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Circle
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Circle
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1482,8 +1482,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line, Circle
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1520,8 +1520,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line, Circle
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1560,8 +1560,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1600,8 +1600,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1639,8 +1639,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1669,8 +1669,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1711,8 +1711,8 @@ class TestFreeCADRoundTripConstraintsAdvanced:
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json, Circle, Line
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Circle, Line
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1757,8 +1757,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1807,8 +1807,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1854,8 +1854,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1901,8 +1901,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1951,8 +1951,8 @@ class TestFreeCADRoundTripSplineAdvanced:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -1995,8 +1995,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2037,8 +2037,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2081,8 +2081,8 @@ class TestFreeCADRoundTripComplexScenarios:
         script = f'''
 import json
 from collections import Counter
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2135,8 +2135,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line, Arc
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line, Arc
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2176,8 +2176,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line, Circle
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line, Circle
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2219,8 +2219,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2265,8 +2265,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2306,8 +2306,8 @@ class TestFreeCADRoundTripAdditional:
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2337,8 +2337,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Point
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Point
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2372,8 +2372,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2408,8 +2408,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2449,8 +2449,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2496,8 +2496,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line, Point
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line, Point
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2537,8 +2537,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Circle, Point
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Circle, Point
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2579,8 +2579,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2622,8 +2622,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2667,8 +2667,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2721,8 +2721,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json, Spline
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Spline
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2765,8 +2765,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2801,8 +2801,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2844,8 +2844,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2886,8 +2886,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2931,8 +2931,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -2978,8 +2978,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3010,8 +3010,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3044,8 +3044,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3086,8 +3086,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3135,8 +3135,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3169,8 +3169,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json, Line
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3211,8 +3211,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json, Line
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3272,8 +3272,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line, Point
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line, Point
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3325,8 +3325,8 @@ print(json.dumps(result))
         script = f'''
 import json
 import math
-from sketch_canonical import sketch_from_json, sketch_to_json, Line
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3365,8 +3365,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3406,8 +3406,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()
@@ -3447,8 +3447,8 @@ print(json.dumps(result))
 
         script = f'''
 import json
-from sketch_canonical import sketch_from_json, sketch_to_json, Line
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json, sketch_to_json, Line
+from adapter_freecad import FreeCADAdapter
 
 sketch = sketch_from_json({repr(input_json)})
 adapter = FreeCADAdapter()

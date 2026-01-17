@@ -1,4 +1,4 @@
-# Canonical Sketch Geometry and Constraint Schema
+# Morphe: Canonical Sketch Geometry and Constraint Schema
 
 This document defines a CAD-agnostic representation for 2D sketch geometry and constraints, along with platform-specific adaptation requirements for FreeCAD, SolidWorks, Inventor, and Fusion360.
 
@@ -12,11 +12,11 @@ This document defines a CAD-agnostic representation for 2D sketch geometry and c
 
 ### 1.1 Project structure
 ```
-sketch_canonical/           # Core schema, validation, serialization (Python)
-sketch_adapter_freecad/     # FreeCAD adapter (Python, open source)
-sketch_adapter_solidworks/  # SolidWorks adapter (Python, Windows only via COM)
-sketch_adapter_inventor/    # Inventor adapter (Python, Windows only via COM)
-sketch_adapter_fusion/      # Fusion 360 adapter (Python, runs inside Fusion)
+core/              # Core schema, validation, serialization (Python)
+adapter_freecad/   # FreeCAD adapter (Python, open source)
+adapter_solidworks/  # SolidWorks adapter (Python, Windows only via COM)
+adapter_inventor/    # Inventor adapter (Python, Windows only via COM)
+adapter_fusion/      # Fusion 360 adapter (Python, runs inside Fusion)
 ```
 
 Each adapter project has:

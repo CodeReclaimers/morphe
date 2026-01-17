@@ -1,8 +1,8 @@
-# Canonical Sketch
+# Morphe
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://github.com/codereclaimers/canonical_sketch/actions/workflows/test.yml/badge.svg)](https://github.com/codereclaimers/canonical_sketch/actions/workflows/test.yml)
+[![Tests](https://github.com/codereclaimers/morphe/actions/workflows/test.yml/badge.svg)](https://github.com/codereclaimers/morphe/actions/workflows/test.yml)
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
 
 A CAD-agnostic 2D sketch geometry and constraint representation with adapter support for FreeCAD, Fusion 360, SolidWorks, and Autodesk Inventor.
@@ -11,11 +11,11 @@ A CAD-agnostic 2D sketch geometry and constraint representation with adapter sup
 
 This project provides:
 
-- **`sketch_canonical`**: Platform-independent schema for 2D sketch geometry and constraints
-- **`sketch_adapter_freecad`**: Adapter for FreeCAD's Sketcher workbench
-- **`sketch_adapter_fusion`**: Adapter for Autodesk Fusion 360
-- **`sketch_adapter_solidworks`**: Adapter for SolidWorks (Windows only, via COM)
-- **`sketch_adapter_inventor`**: Adapter for Autodesk Inventor (Windows only, via COM)
+- **`core`**: Platform-independent schema for 2D sketch geometry and constraints
+- **`adapter_freecad`**: Adapter for FreeCAD's Sketcher workbench
+- **`adapter_fusion`**: Adapter for Autodesk Fusion 360
+- **`adapter_solidworks`**: Adapter for SolidWorks (Windows only, via COM)
+- **`adapter_inventor`**: Adapter for Autodesk Inventor (Windows only, via COM)
 
 The canonical format enables constrained sketches to be stored, transferred, and manipulated independently of any specific CAD system.
 
@@ -44,7 +44,7 @@ pip install pywin32
 ## Quick Start
 
 ```python
-from sketch_canonical import (
+from core import (
     SketchDocument, Point2D, Line, Circle, Horizontal, Radius,
     save_sketch, load_sketch
 )
@@ -66,8 +66,8 @@ sketch = load_sketch("my_sketch.json")
 ## FreeCAD Integration
 
 ```python
-from sketch_canonical import load_sketch
-from sketch_adapter_freecad import FreeCADAdapter
+from core import load_sketch
+from adapter_freecad import FreeCADAdapter
 
 sketch = load_sketch("my_sketch.json")
 adapter = FreeCADAdapter()
@@ -87,10 +87,10 @@ The Fusion 360 adapter runs as a script or add-in within Fusion 360:
 ```python
 # Run this inside Fusion 360's Scripts environment
 import sys
-sys.path.insert(0, r"path/to/canonical_sketch")
+sys.path.insert(0, r"path/to/morphe")
 
-from sketch_canonical import load_sketch
-from sketch_adapter_fusion import FusionAdapter
+from core import load_sketch
+from adapter_fusion import FusionAdapter
 
 def run(context):
     sketch = load_sketch("my_sketch.json")
@@ -111,8 +111,8 @@ def run(context):
 The SolidWorks adapter uses COM automation via `pywin32` (Windows only):
 
 ```python
-from sketch_canonical import load_sketch
-from sketch_adapter_solidworks import SolidWorksAdapter, SOLIDWORKS_AVAILABLE
+from core import load_sketch
+from adapter_solidworks import SolidWorksAdapter, SOLIDWORKS_AVAILABLE
 
 if SOLIDWORKS_AVAILABLE:
     sketch = load_sketch("my_sketch.json")
@@ -146,8 +146,8 @@ if SOLIDWORKS_AVAILABLE:
 The Inventor adapter uses COM automation via `pywin32` (Windows only):
 
 ```python
-from sketch_canonical import load_sketch
-from sketch_adapter_inventor import InventorAdapter, INVENTOR_AVAILABLE
+from core import load_sketch
+from adapter_inventor import InventorAdapter, INVENTOR_AVAILABLE
 
 if INVENTOR_AVAILABLE:
     sketch = load_sketch("my_sketch.json")

@@ -9,8 +9,8 @@ Prerequisites:
     1. Start FreeCAD
     2. In FreeCAD's Python console, run:
        >>> import sys
-       >>> sys.path.insert(0, '/path/to/canonical_sketch')
-       >>> from sketch_adapter_freecad import start_server
+       >>> sys.path.insert(0, '/path/to/morphe')
+       >>> from adapter_freecad import start_server
        >>> start_server()
 
     3. Then run this script from the command line:
@@ -28,7 +28,7 @@ import json
 import sys
 from pathlib import Path
 
-from sketch_adapter_freecad import FreeCADClient, check_server
+from adapter_freecad import FreeCADClient, check_server
 
 
 def print_status(client: FreeCADClient) -> None:
@@ -89,7 +89,7 @@ def export_sketch(client: FreeCADClient, sketch_name: str) -> None:
     print(f"  Constraints: {len(doc.constraints)}")
 
     # Save to file
-    from sketch_canonical import sketch_to_json
+    from core import sketch_to_json
 
     output_file = Path(f"{sketch_name}.json")
     json_str = sketch_to_json(doc)
@@ -130,7 +130,7 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 To start the server in FreeCAD:
-    >>> from sketch_adapter_freecad import start_server
+    >>> from adapter_freecad import start_server
     >>> start_server()
         """,
     )
@@ -168,7 +168,7 @@ To start the server in FreeCAD:
     if not check_server(args.host, args.port, timeout=2.0):
         print("\nError: Cannot connect to FreeCAD RPC server.")
         print("\nMake sure FreeCAD is running and the server is started:")
-        print("  >>> from sketch_adapter_freecad import start_server")
+        print("  >>> from adapter_freecad import start_server")
         print("  >>> start_server()")
         sys.exit(1)
 

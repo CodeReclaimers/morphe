@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from sketch_canonical import (
+from core import (
     Angle,
     Arc,
     Circle,
@@ -46,7 +46,7 @@ from sketch_canonical import (
 
 # Try to import the SolidWorks adapter
 try:
-    from sketch_adapter_solidworks import SOLIDWORKS_AVAILABLE, SolidWorksAdapter
+    from adapter_solidworks import SOLIDWORKS_AVAILABLE, SolidWorksAdapter
 except ImportError:
     SOLIDWORKS_AVAILABLE = False
     SolidWorksAdapter = None  # type: ignore[misc,assignment]

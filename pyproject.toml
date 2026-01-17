@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sketch-canonical"
+name = "morphe"
 version = "0.1.0"
 description = "CAD-agnostic representation for 2D sketch geometry and constraints"
 readme = "README.md"
@@ -40,7 +40,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["sketch_canonical*", "sketch_adapter_common*", "sketch_adapter_freecad*", "sketch_adapter_fusion*", "sketch_adapter_inventor*", "sketch_adapter_solidworks*"]
+include = ["core*", "adapter_common*", "adapter_freecad*", "adapter_fusion*", "adapter_inventor*", "adapter_solidworks*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -69,6 +69,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"sketch_adapter_fusion/test_scripts/*.py" = ["E402"]  # Imports after path manipulation
-"sketch_adapter_fusion/addin/*/*.py" = ["E402"]  # Imports after path setup for add-in
-"sketch_adapter_fusion/script/*/*.py" = ["E402", "N999"]  # Imports after path setup, Fusion script naming
+"adapter_fusion/test_scripts/*.py" = ["E402"]  # Imports after path manipulation
+"adapter_fusion/addin/*/*.py" = ["E402"]  # Imports after path setup for add-in
+"adapter_fusion/script/*/*.py" = ["E402", "N999"]  # Imports after path setup, Fusion script naming

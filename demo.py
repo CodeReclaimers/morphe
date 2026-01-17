@@ -29,7 +29,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sketch_canonical import (
+from core import (
     Arc,
     Circle,
     Distance,
@@ -382,8 +382,8 @@ def export_to_freecad(doc: SketchDocument) -> None:
 import sys
 sys.path.insert(0, {repr(str(project_root))})
 
-from sketch_canonical import sketch_from_json
-from sketch_adapter_freecad import FreeCADAdapter
+from core import sketch_from_json
+from adapter_freecad import FreeCADAdapter
 import FreeCADGui
 
 # Load the sketch from JSON
@@ -458,9 +458,9 @@ print(f"Loaded {{len(doc.primitives)}} primitives, {{len(doc.constraints)}} cons
 def export_to_inventor(doc: SketchDocument) -> None:
     """Export the sketch to Autodesk Inventor."""
     try:
-        from sketch_adapter_inventor import INVENTOR_AVAILABLE, InventorAdapter
+        from adapter_inventor import INVENTOR_AVAILABLE, InventorAdapter
     except ImportError:
-        print("Error: sketch_adapter_inventor module not found.")
+        print("Error: adapter_inventor module not found.")
         print("Make sure the Inventor adapter is installed.")
         sys.exit(1)
 
@@ -485,9 +485,9 @@ def export_to_inventor(doc: SketchDocument) -> None:
 def export_to_solidworks(doc: SketchDocument) -> None:
     """Export the sketch to SolidWorks."""
     try:
-        from sketch_adapter_solidworks import SOLIDWORKS_AVAILABLE, SolidWorksAdapter
+        from adapter_solidworks import SOLIDWORKS_AVAILABLE, SolidWorksAdapter
     except ImportError:
-        print("Error: sketch_adapter_solidworks module not found.")
+        print("Error: adapter_solidworks module not found.")
         print("Make sure the SolidWorks adapter is installed.")
         sys.exit(1)
 
@@ -512,9 +512,9 @@ def export_to_solidworks(doc: SketchDocument) -> None:
 def export_to_fusion(doc: SketchDocument) -> None:
     """Export the sketch to Fusion 360."""
     try:
-        from sketch_adapter_fusion import FUSION_AVAILABLE, FusionAdapter
+        from adapter_fusion import FUSION_AVAILABLE, FusionAdapter
     except ImportError:
-        print("Error: sketch_adapter_fusion module not found.")
+        print("Error: adapter_fusion module not found.")
         print("Make sure the Fusion 360 adapter is installed.")
         sys.exit(1)
 

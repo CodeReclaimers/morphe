@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from sketch_canonical import (
+from core import (
     Angle,
     Arc,
     Circle,

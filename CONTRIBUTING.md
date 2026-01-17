@@ -1,6 +1,6 @@
-# Contributing to Canonical Sketch
+# Contributing to Morphe
 
-Thank you for your interest in contributing to Canonical Sketch! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Morphe! This document provides guidelines and information for contributors.
 
 ## Ways to Contribute
 
@@ -15,8 +15,8 @@ Thank you for your interest in contributing to Canonical Sketch! This document p
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/codereclaimers/canonical_sketch.git
-   cd canonical_sketch
+   git clone https://github.com/codereclaimers/morphe.git
+   cd morphe
    ```
 
 2. Install in development mode with dev dependencies:
@@ -42,19 +42,19 @@ Before submitting a pull request, please run:
 ```bash
 black .
 ruff check .
-mypy sketch_canonical
+mypy core
 ```
 
 ## Adding a New CAD Adapter
 
 All adapters are implemented in Python. To add support for a new CAD system:
 
-1. Create a new package: `sketch_adapter_<cadname>/`
-2. Implement the `SketchBackendAdapter` abstract base class from `sketch_adapter_common`
+1. Create a new package: `adapter_<cadname>/`
+2. Implement the `SketchBackendAdapter` abstract base class from `adapter_common`
 3. Add tests in `tests/test_<cadname>_adapter.py` or within the adapter package
 4. Update the README to mention the new adapter
 
-See `sketch_adapter_freecad/` for a reference implementation. For Windows COM-based CAD systems (like SolidWorks or Inventor), see `sketch_adapter_solidworks/` for patterns using `pywin32`.
+See `adapter_freecad/` for a reference implementation. For Windows COM-based CAD systems (like SolidWorks or Inventor), see `adapter_solidworks/` for patterns using `pywin32`.
 
 ## Pull Request Guidelines
 

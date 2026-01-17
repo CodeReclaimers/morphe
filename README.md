@@ -175,6 +175,62 @@ if INVENTOR_AVAILABLE:
 - Construction geometry
 - Solver status and DOF reporting
 
+## RPC Server Mode
+
+For GUI tools or external scripts that need to communicate with CAD applications, each adapter provides an RPC server/client pair.
+
+### Starting Servers
+
+**FreeCAD** (run in FreeCAD's Python console):
+```python
+from morphe.adapters.freecad import start_server
+start_server()  # localhost:9876
+```
+
+**Fusion 360** (install the MorpheServer add-in from `morphe/adapters/fusion/addin/MorpheServer/`):
+```bash
+cd morphe/adapters/fusion/addin
+python setup_addin.py install
+```
+The server starts automatically when Fusion 360 launches (localhost:9879).
+
+**SolidWorks** (run with SolidWorks open):
+```python
+from morphe.adapters.solidworks import start_server
+start_server()  # localhost:9878
+```
+
+**Inventor** (run with Inventor open):
+```python
+from morphe.adapters.inventor import start_server
+start_server()  # localhost:9877
+```
+
+### Using Clients
+
+All clients share the same interface:
+
+```python
+from morphe.adapters.freecad import FreeCADClient
+# or: from morphe.adapters.fusion import FusionClient
+# or: from morphe.adapters.solidworks import SolidWorksClient
+# or: from morphe.adapters.inventor import InventorClient
+
+client = FreeCADClient()
+if client.connect():
+    # List available sketches
+    sketches = client.list_sketches()
+
+    # Export a sketch to canonical format
+    sketch = client.export_sketch("Sketch")
+
+    # Import a sketch into the CAD application
+    client.import_sketch(my_sketch, name="NewSketch")
+
+    # Get solver status
+    status, dof = client.get_solver_status("Sketch")
+```
+
 ## Running Tests
 
 **Core tests (no CAD software required):**
@@ -193,7 +249,7 @@ pytest tests/test_freecad_roundtrip.py -v
 The Fusion 360 test suite (73 tests) must be run as a script inside Fusion 360:
 1. Open Fusion 360
 2. Go to Utilities > Add-Ins > Scripts
-3. Add and run the test script from `adapter_fusion/script/MorpheTests/`
+3. Add and run the test script from `morphe/adapters/fusion/script/MorpheTests/`
 
 **SolidWorks adapter tests (requires SolidWorks on Windows):**
 ```bash

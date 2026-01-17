@@ -7,8 +7,13 @@ This package contains adapters for various CAD applications:
 - fusion: Autodesk Fusion 360 adapter
 - inventor: Autodesk Inventor adapter
 - solidworks: SolidWorks adapter
+
+CAD-specific adapters are not imported by default to avoid
+requiring CAD dependencies. Import them directly:
+    from morphe.adapters.freecad import FreeCADClient
+    from morphe.adapters.fusion import FusionClient
 """
 
-from . import common, freecad, fusion, inventor, solidworks
+from . import common
 
-__all__ = ["common", "freecad", "fusion", "inventor", "solidworks"]
+__all__ = ["common"]

@@ -1,9 +1,9 @@
 """
-Canonical Sketch Server Add-in for Fusion 360.
+Morphe Server Add-in for Fusion 360.
 
 This add-in automatically starts the RPC server when Fusion 360 launches,
 enabling external applications to interact with Fusion 360 sketches via
-the canonical sketch format.
+the Morphe canonical sketch format.
 
 The server listens on localhost:9879 by default.
 
@@ -35,16 +35,16 @@ def _setup_import_paths() -> tuple[bool, str]:
     addin_dir = os.path.dirname(addin_file)
 
     # Expected structure:
-    #   canonical_sketch/                    <- REPO_DIR
-    #     adapter_fusion/             <- ADAPTER_DIR
+    #   morphe/                              <- REPO_DIR
+    #     adapter_fusion/                    <- ADAPTER_DIR
     #       addin/
-    #         CanonicalSketchServer/         <- addin_dir
-    #           CanonicalSketchServer.py     <- this file
+    #         MorpheServer/                  <- addin_dir
+    #           MorpheServer.py              <- this file
 
     # Navigate up to find the repository root
     addin_parent = os.path.dirname(addin_dir)  # addin/
     adapter_dir = os.path.dirname(addin_parent)  # adapter_fusion/
-    repo_dir = os.path.dirname(adapter_dir)  # canonical_sketch/
+    repo_dir = os.path.dirname(adapter_dir)  # morphe/
 
     # Validate the directory structure
     expected_adapter_init = os.path.join(adapter_dir, "__init__.py")

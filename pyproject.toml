@@ -25,10 +25,10 @@ authors = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/codereclaimers/canonical_sketch"
-Repository = "https://github.com/codereclaimers/canonical_sketch"
-Issues = "https://github.com/codereclaimers/canonical_sketch/issues"
-Documentation = "https://github.com/codereclaimers/canonical_sketch/blob/main/SPECIFICATION.md"
+Homepage = "https://github.com/codereclaimers/morphe"
+Repository = "https://github.com/codereclaimers/morphe"
+Issues = "https://github.com/codereclaimers/morphe/issues"
+Documentation = "https://github.com/codereclaimers/morphe/blob/main/SPECIFICATION.md"
 
 [project.optional-dependencies]
 dev = [

@@ -7,20 +7,20 @@ sketches can be loaded into Fusion and exported back without loss of essential i
 ## Prerequisites
 
 1. Autodesk Fusion 360 installed
-2. The `canonical_sketch` package accessible from Fusion's Python environment
+2. The `morphe` package accessible from Fusion's Python environment
 
 ## Setup
 
 ### Option 1: Add to Python Path (Recommended for Development)
 
 The test script automatically adds the project root to the Python path. If you're
-running from the default location within the canonical_sketch project, no additional
+running from the default location within the morphe project, no additional
 setup is required.
 
 ### Option 2: Install the Package
 
 ```bash
-cd /path/to/canonical_sketch
+cd /path/to/morphe
 pip install -e .
 ```
 
@@ -87,7 +87,7 @@ To view the Text Commands palette: **View** > **Show Text Commands** (or Ctrl+Al
 
 ### "Module not found" Errors
 
-If you see import errors for `sketch_canonical` or `sketch_adapter_fusion`:
+If you see import errors for `core` or `adapter_fusion`:
 
 1. Check that the project root path is correct in the test script
 2. Verify the package structure is intact

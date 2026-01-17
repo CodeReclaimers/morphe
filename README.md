@@ -193,7 +193,7 @@ pytest tests/test_freecad_roundtrip.py -v
 The Fusion 360 test suite (73 tests) must be run as a script inside Fusion 360:
 1. Open Fusion 360
 2. Go to Utilities > Add-Ins > Scripts
-3. Add and run the test script from `sketch_adapter_fusion/tests/`
+3. Add and run the test script from `adapter_fusion/script/MorpheTests/`
 
 **SolidWorks adapter tests (requires SolidWorks on Windows):**
 ```bash

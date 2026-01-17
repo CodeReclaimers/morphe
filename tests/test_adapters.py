@@ -6,13 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-# Import vertex_map module (doesn't require FreeCAD)
-from adapter_freecad.vertex_map import (
-    VertexMap,
-    get_point_type_from_vertex,
-    get_vertex_index,
-)
-from core import (
+from morphe import (
     AdapterError,
     Angle,
     Arc,
@@ -51,6 +45,13 @@ from core import (
     Symmetric,
     Tangent,
     Vertical,
+)
+
+# Import vertex_map module (doesn't require FreeCAD)
+from morphe.adapters.freecad.vertex_map import (
+    VertexMap,
+    get_point_type_from_vertex,
+    get_vertex_index,
 )
 
 # =============================================================================
@@ -342,18 +343,18 @@ class TestFreeCADAdapterImport:
     """Test FreeCAD adapter import behavior."""
 
     def test_freecad_available_flag(self):
-        from adapter_freecad import FREECAD_AVAILABLE
+        from morphe.adapters.freecad import FREECAD_AVAILABLE
         # In test environment, FreeCAD is not available
         assert FREECAD_AVAILABLE is False
 
     def test_import_adapter_without_freecad(self):
         """FreeCADAdapter can be imported even without FreeCAD."""
-        from adapter_freecad import FreeCADAdapter
+        from morphe.adapters.freecad import FreeCADAdapter
         assert FreeCADAdapter is not None
 
     def test_instantiation_requires_freecad(self):
         """Creating FreeCADAdapter instance requires FreeCAD."""
-        from adapter_freecad import FreeCADAdapter
+        from morphe.adapters.freecad import FreeCADAdapter
         with pytest.raises(ImportError) as exc_info:
             FreeCADAdapter()
         assert "FreeCAD is not available" in str(exc_info.value)
@@ -393,7 +394,7 @@ class TestFreeCADAdapterMocked:
     @pytest.fixture
     def adapter(self, mock_freecad):
         """Create adapter with mocked FreeCAD."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         # Patch FREECAD_AVAILABLE and modules
         with patch.object(adapter_module, 'FREECAD_AVAILABLE', True), \
@@ -863,7 +864,7 @@ class TestFreeCADAdapterMocked:
         adapter_obj._sketch_doc.primitives["L1"] = line2
         adapter_obj._sketch_doc.primitives["L2"] = line3
 
-        from core import Equal
+        from morphe import Equal
         constraint = Equal("L0", "L1", "L2")
         result = adapter_obj.add_constraint(constraint)
 
@@ -884,7 +885,7 @@ class TestFreeCADAdapterMocked:
         adapter_obj._sketch_doc.primitives["C0"] = c1
         adapter_obj._sketch_doc.primitives["C1"] = c2
 
-        from core import Concentric
+        from morphe import Concentric
         constraint = Concentric("C0", "C1")
         result = adapter_obj.add_constraint(constraint)
 
@@ -1090,7 +1091,7 @@ class TestFreeCADAdapterExport:
     @pytest.fixture
     def adapter_for_export(self, mock_freecad_for_export):
         """Create adapter for export testing."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         with patch.object(adapter_module, 'FREECAD_AVAILABLE', True), \
              patch.object(adapter_module, 'App', mock_freecad_for_export['FreeCAD']), \
@@ -1227,7 +1228,7 @@ class TestFreeCADAdapterConstraintExport:
     @pytest.fixture
     def adapter_with_constraints(self, mock_freecad_with_constraints):
         """Create adapter with constraints."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         with patch.object(adapter_module, 'FREECAD_AVAILABLE', True), \
              patch.object(adapter_module, 'App', mock_freecad_with_constraints['FreeCAD']), \
@@ -1253,7 +1254,7 @@ class TestInferVertexIndex:
     @pytest.fixture
     def adapter(self):
         """Create mocked adapter."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         mock_app = MagicMock()
         mock_app.ActiveDocument = MagicMock()
@@ -1317,7 +1318,7 @@ class TestComputeMultiplicities:
     @pytest.fixture
     def adapter(self):
         """Create mocked adapter."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         mock_app = MagicMock()
         mock_app.ActiveDocument = MagicMock()
@@ -1363,7 +1364,7 @@ class TestGeoToPrimType:
     @pytest.fixture
     def adapter(self):
         """Create mocked adapter."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         mock_app = MagicMock()
         mock_app.ActiveDocument = MagicMock()
@@ -1415,7 +1416,7 @@ class TestLoadSketch:
     @pytest.fixture
     def adapter(self):
         """Create mocked adapter."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         mock_app = MagicMock()
         mock_doc = MagicMock()
@@ -1468,7 +1469,7 @@ class TestCaptureImage:
 
     def test_capture_requires_gui(self):
         """capture_image requires FreeCADGui which won't be available."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         mock_app = MagicMock()
         mock_sketch = MagicMock()
@@ -1494,7 +1495,7 @@ class TestTangentWithConnectionPoint:
     @pytest.fixture
     def adapter(self):
         """Create mocked adapter."""
-        import adapter_freecad.adapter as adapter_module
+        import morphe.adapters.freecad.adapter as adapter_module
 
         mock_app = MagicMock()
         mock_sketch = MagicMock()

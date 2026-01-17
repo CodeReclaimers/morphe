@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from core import (
+from morphe import (
     Angle,
     Arc,
     Circle,

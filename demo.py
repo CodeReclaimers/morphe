@@ -29,7 +29,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from core import (
+from morphe import (
     Arc,
     Circle,
     Distance,
@@ -382,8 +382,8 @@ def export_to_freecad(doc: SketchDocument) -> None:
 import sys
 sys.path.insert(0, {repr(str(project_root))})
 
-from core import sketch_from_json
-from adapter_freecad import FreeCADAdapter
+from morphe import sketch_from_json
+from morphe.adapters.freecad import FreeCADAdapter
 import FreeCADGui
 
 # Load the sketch from JSON

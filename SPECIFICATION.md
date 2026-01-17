@@ -12,11 +12,13 @@ This document defines a CAD-agnostic representation for 2D sketch geometry and c
 
 ### 1.1 Project structure
 ```
-core/              # Core schema, validation, serialization (Python)
-adapter_freecad/   # FreeCAD adapter (Python, open source)
-adapter_solidworks/  # SolidWorks adapter (Python, Windows only via COM)
-adapter_inventor/    # Inventor adapter (Python, Windows only via COM)
-adapter_fusion/      # Fusion 360 adapter (Python, runs inside Fusion)
+morphe/                      # Main package
+  __init__.py                # Core schema, validation, serialization (Python)
+  adapters/
+    freecad/                 # FreeCAD adapter (Python, open source)
+    solidworks/              # SolidWorks adapter (Python, Windows only via COM)
+    inventor/                # Inventor adapter (Python, Windows only via COM)
+    fusion/                  # Fusion 360 adapter (Python, runs inside Fusion)
 ```
 
 Each adapter project has:

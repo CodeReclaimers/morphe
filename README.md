@@ -135,7 +135,7 @@ if SOLIDWORKS_AVAILABLE:
 - Dimensional constraints use geometry recreation to avoid blocking dialogs
 
 **Supported Features:**
-- All primitive types: Line, Arc, Circle, Point, Spline
+- All primitive types: Line, Arc, Circle, Point, Spline, Ellipse, EllipticalArc
 - All geometric constraints: Coincident, Tangent, Parallel, Perpendicular, Horizontal, Vertical, Equal, Concentric, Collinear, Midpoint, Fixed, Symmetric
 - All dimensional constraints: Length, Radius, Diameter, Angle, Distance, DistanceX, DistanceY
 - Construction geometry
@@ -169,7 +169,7 @@ if INVENTOR_AVAILABLE:
 - Sketches are created on the XY plane by default
 
 **Supported Features:**
-- All primitive types: Line, Arc, Circle, Point, Spline
+- All primitive types: Line, Arc, Circle, Point, Spline, Ellipse, EllipticalArc
 - All geometric constraints: Coincident, Tangent, Parallel, Perpendicular, Horizontal, Vertical, Equal, Concentric, Collinear, Midpoint, Fixed, Symmetric
 - All dimensional constraints: Length, Radius, Diameter, Angle, Distance, DistanceX, DistanceY
 - Construction geometry

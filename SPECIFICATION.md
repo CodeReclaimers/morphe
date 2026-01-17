@@ -12,11 +12,11 @@ This document defines a CAD-agnostic representation for 2D sketch geometry and c
 
 ### 1.1 Project structure
 ```
-sketch-canonical/           # Core schema, validation, serialization (Python)
-sketch-adapter-freecad/     # FreeCAD adapter (Python, open source)
-sketch-adapter-solidworks/  # SolidWorks adapter (C#, commercial)
-sketch-adapter-inventor/    # Inventor adapter (C#, commercial)  
-sketch-adapter-fusion360/   # Fusion 360 adapter (Python, commercial)
+sketch_canonical/           # Core schema, validation, serialization (Python)
+sketch_adapter_freecad/     # FreeCAD adapter (Python, open source)
+sketch_adapter_solidworks/  # SolidWorks adapter (Python, Windows only via COM)
+sketch_adapter_inventor/    # Inventor adapter (Python, Windows only via COM)
+sketch_adapter_fusion/      # Fusion 360 adapter (Python, runs inside Fusion)
 ```
 
 Each adapter project has:
@@ -97,6 +97,8 @@ class ElementPrefix:
     CIRCLE = "C"
     POINT = "P"
     SPLINE = "S"
+    ELLIPSE = "E"
+    ELLIPTICAL_ARC = "EA"
 ```
 
 ---
@@ -369,6 +371,81 @@ class Spline(SketchPrimitive):
     
     def get_valid_point_types(self) -> list[PointType]:
         return [PointType.START, PointType.END, PointType.CONTROL]
+```
+
+### 3.8 Ellipse
+
+```python
+@dataclass
+class Ellipse(SketchPrimitive):
+    """
+    Full ellipse defined by center, radii, and rotation.
+
+    Valid point types: CENTER only
+    """
+    center: Point2D
+    major_radius: float  # Semi-major axis length
+    minor_radius: float  # Semi-minor axis length
+    rotation: float = 0.0  # Rotation angle in radians (CCW from X-axis)
+
+    def get_point(self, point_type: PointType) -> Point2D:
+        match point_type:
+            case PointType.CENTER: return self.center
+            case _: raise ValueError(f"Invalid point type {point_type} for Ellipse")
+
+    def get_valid_point_types(self) -> list[PointType]:
+        return [PointType.CENTER]
+
+    def point_at_parameter(self, t: float) -> Point2D:
+        """Get point on ellipse at parameter t (radians)."""
+        import math
+        cos_r, sin_r = math.cos(self.rotation), math.sin(self.rotation)
+        x_local = self.major_radius * math.cos(t)
+        y_local = self.minor_radius * math.sin(t)
+        return Point2D(
+            self.center.x + x_local * cos_r - y_local * sin_r,
+            self.center.y + x_local * sin_r + y_local * cos_r
+        )
+```
+
+### 3.9 EllipticalArc
+
+```python
+@dataclass
+class EllipticalArc(SketchPrimitive):
+    """
+    Arc of an ellipse defined by center, radii, rotation, and angular range.
+
+    Valid point types: START, END, CENTER
+    """
+    center: Point2D
+    major_radius: float
+    minor_radius: float
+    rotation: float = 0.0  # Rotation angle in radians
+    start_param: float = 0.0  # Start angle in radians (on unrotated ellipse)
+    end_param: float = 0.0    # End angle in radians
+    ccw: bool = True          # Counter-clockwise from start to end
+
+    def get_point(self, point_type: PointType) -> Point2D:
+        match point_type:
+            case PointType.START: return self.point_at_parameter(self.start_param)
+            case PointType.END: return self.point_at_parameter(self.end_param)
+            case PointType.CENTER: return self.center
+            case _: raise ValueError(f"Invalid point type {point_type} for EllipticalArc")
+
+    def get_valid_point_types(self) -> list[PointType]:
+        return [PointType.START, PointType.END, PointType.CENTER]
+
+    def point_at_parameter(self, t: float) -> Point2D:
+        """Get point on ellipse at parameter t (radians)."""
+        import math
+        cos_r, sin_r = math.cos(self.rotation), math.sin(self.rotation)
+        x_local = self.major_radius * math.cos(t)
+        y_local = self.minor_radius * math.sin(t)
+        return Point2D(
+            self.center.x + x_local * cos_r - y_local * sin_r,
+            self.center.y + x_local * sin_r + y_local * cos_r
+        )
 ```
 
 ---
@@ -1097,15 +1174,25 @@ Both approaches produce equivalent results. Use Approach 1 for clarity.
 
 | Constraint | Status | Method |
 |------------|--------|--------|
-| FIXED | ✓ Implemented | `swConstraintType_e.swConstraintType_FIXED` |
-| HORIZONTAL | ✓ Implemented | `swConstraintType_e.swConstraintType_HORIZONTAL` |
-| VERTICAL | ✓ Implemented | `swConstraintType_e.swConstraintType_VERTICAL` |
-| COINCIDENT | Use Alternative | `sgMERGEPOINTS` for path connections |
-| TANGENT | ⚠ Not Implemented | Would need implementation |
-| PERPENDICULAR | ⚠ Not Implemented | Would need implementation |
-| PARALLEL | ⚠ Not Implemented | Would need implementation |
-| EQUAL | ⚠ Not Implemented | Would need implementation |
-| CONCENTRIC | ⚠ Not Implemented | Would need implementation |
+| FIXED | ✓ Implemented | `sgFIXED` |
+| HORIZONTAL | ✓ Implemented | `sgHORIZONTAL2D` |
+| VERTICAL | ✓ Implemented | `sgVERTICAL2D` |
+| COINCIDENT | ✓ Implemented | `sgCOINCIDENT` or `sgMERGEPOINTS` |
+| TANGENT | ✓ Implemented | `sgTANGENT` |
+| PERPENDICULAR | ✓ Implemented | `sgPERPENDICULAR` |
+| PARALLEL | ✓ Implemented | `sgPARALLEL` |
+| EQUAL | ✓ Implemented | `sgSAMELENGTH` |
+| CONCENTRIC | ✓ Implemented | `sgCONCENTRIC` |
+| COLLINEAR | ✓ Implemented | `sgCOLINEAR` |
+| MIDPOINT | ✓ Implemented | `sgATMIDDLE` |
+| SYMMETRIC | ✓ Implemented | `sgSYMMETRIC` |
+| LENGTH | ✓ Implemented | Dimensional constraint |
+| RADIUS | ✓ Implemented | Dimensional constraint |
+| DIAMETER | ✓ Implemented | Dimensional constraint |
+| ANGLE | ✓ Implemented | Dimensional constraint |
+| DISTANCE | ✓ Implemented | Dimensional constraint |
+| DISTANCE_X | ✓ Implemented | Dimensional constraint |
+| DISTANCE_Y | ✓ Implemented | Dimensional constraint |
 
 ```csharp
 public bool AddConstraint(SketchConstraint constraint)
@@ -1470,14 +1557,25 @@ public SketchPoint GetArcEndPoint(SketchArc arc, bool ccw)
 
 | Constraint | Status | Method |
 |------------|--------|--------|
-| FIXED (Ground) | ✓ Verified | `AddGround(entity)` |
-| HORIZONTAL | ✓ Verified | `AddHorizontal(entity)` |
-| VERTICAL | ✓ Verified | `AddVertical(entity)` |
-| COINCIDENT | ✓ Verified | `AddCoincident(e1, e2)` — wrap in try-catch |
-| TANGENT | ⚠ Unverified | Likely `AddTangent(e1, e2)` |
-| PERPENDICULAR | ⚠ Unverified | Likely `AddPerpendicular(e1, e2)` |
-| PARALLEL | ⚠ Unverified | Likely `AddParallel(e1, e2)` |
-| EQUAL | ⚠ Unverified | Likely `AddEqual(e1, e2)` |
+| FIXED (Ground) | ✓ Implemented | `AddGround(entity)` |
+| HORIZONTAL | ✓ Implemented | `AddHorizontal(entity)` |
+| VERTICAL | ✓ Implemented | `AddVertical(entity)` |
+| COINCIDENT | ✓ Implemented | `AddCoincident(e1, e2)` — wrap in try-catch |
+| TANGENT | ✓ Implemented | `AddTangent(e1, e2)` |
+| PERPENDICULAR | ✓ Implemented | `AddPerpendicular(e1, e2)` |
+| PARALLEL | ✓ Implemented | `AddParallel(e1, e2)` |
+| EQUAL | ✓ Implemented | `AddEqual(e1, e2)` |
+| CONCENTRIC | ✓ Implemented | `AddConcentric(e1, e2)` |
+| COLLINEAR | ✓ Implemented | `AddCollinear(e1, e2)` |
+| MIDPOINT | ✓ Implemented | `AddMidpoint(point, line)` |
+| SYMMETRIC | ✓ Implemented | `AddSymmetry(e1, e2, axis)` |
+| LENGTH | ✓ Implemented | Dimensional constraint |
+| RADIUS | ✓ Implemented | `AddRadial(entity, placement)` |
+| DIAMETER | ✓ Implemented | `AddDiameter(entity, placement)` |
+| ANGLE | ✓ Implemented | `AddTwoLineAngle(e1, e2, placement)` |
+| DISTANCE | ✓ Implemented | `AddTwoPointDistance(p1, p2, placement)` |
+| DISTANCE_X | ✓ Implemented | Horizontal dimension |
+| DISTANCE_Y | ✓ Implemented | Vertical dimension |
 
 ```csharp
 public bool AddConstraint(SketchConstraint constraint)
@@ -1979,19 +2077,27 @@ def export_sketch(self) -> SketchDocument:
 
 | Canonical | FreeCAD | SolidWorks | Inventor | Fusion 360 |
 |-----------|---------|------------|----------|------------|
-| COINCIDENT | Coincident ✓ | sgMERGEPOINTS ✓ | AddCoincident ✓ | addCoincident ✓ |
-| TANGENT | Tangent ✓ | ⚠ Not impl | AddTangent ⚠ | addTangent ✓ |
-| PERPENDICULAR | Perpendicular ✓ | ⚠ Not impl | AddPerpendicular ⚠ | addPerpendicular ✓ |
-| PARALLEL | Parallel ✓ | ⚠ Not impl | AddParallel ⚠ | addParallel ✓ |
+| COINCIDENT | Coincident ✓ | sgCOINCIDENT ✓ | AddCoincident ✓ | addCoincident ✓ |
+| TANGENT | Tangent ✓ | sgTANGENT ✓ | AddTangent ✓ | addTangent ✓ |
+| PERPENDICULAR | Perpendicular ✓ | sgPERPENDICULAR ✓ | AddPerpendicular ✓ | addPerpendicular ✓ |
+| PARALLEL | Parallel ✓ | sgPARALLEL ✓ | AddParallel ✓ | addParallel ✓ |
 | HORIZONTAL | Horizontal ✓ | sgHORIZONTAL2D ✓ | AddHorizontal ✓ | addHorizontal ✓ |
 | VERTICAL | Vertical ✓ | sgVERTICAL2D ✓ | AddVertical ✓ | addVertical ✓ |
-| EQUAL | Equal ✓ | ⚠ Not impl | AddEqual ⚠ | addEqual ✓ |
-| CONCENTRIC | Concentric ✓ | ⚠ Not impl | AddConcentric ⚠ | addConcentric ✓ |
-| FIXED | Fixed ✓ | sgFIXED ✓ | AddGround ✓ | addFix ⚠ |
-| RADIUS | Radius ✓ | Radial dim | AddRadial ⚠ | addRadialDimension ✓ |
-| DISTANCE | Distance ✓ | Linear dim | AddTwoPointDistance ⚠ | addDistanceDimension ✓ |
+| EQUAL | Equal ✓ | sgSAMELENGTH ✓ | AddEqual ✓ | addEqual ✓ |
+| CONCENTRIC | Concentric ✓ | sgCONCENTRIC ✓ | AddConcentric ✓ | addConcentric ✓ |
+| COLLINEAR | Collinear ✓ | sgCOLINEAR ✓ | AddCollinear ✓ | addCollinear ✓ |
+| FIXED | Fixed ✓ | sgFIXED ✓ | AddGround ✓ | addFix ✓ |
+| SYMMETRIC | Symmetric ✓ | sgSYMMETRIC ✓ | AddSymmetry ✓ | addSymmetry ✓ |
+| MIDPOINT | Midpoint ✓ | sgATMIDDLE ✓ | AddMidpoint ✓ | addMidpoint ✓ |
+| LENGTH | Length ✓ | Dimension ✓ | Dimension ✓ | addSketchLineDimension ✓ |
+| RADIUS | Radius ✓ | Dimension ✓ | AddRadial ✓ | addRadialDimension ✓ |
+| DIAMETER | Diameter ✓ | Dimension ✓ | AddDiameter ✓ | addDiameterDimension ✓ |
+| ANGLE | Angle ✓ | Dimension ✓ | AddTwoLineAngle ✓ | addAngularDimension ✓ |
+| DISTANCE | Distance ✓ | Dimension ✓ | AddTwoPointDistance ✓ | addDistanceDimension ✓ |
+| DISTANCE_X | DistanceX ✓ | Dimension ✓ | Dimension ✓ | addDistanceDimension ✓ |
+| DISTANCE_Y | DistanceY ✓ | Dimension ✓ | Dimension ✓ | addDistanceDimension ✓ |
 
-Legend: ✓ = Verified, ⚠ = Unverified/Not Implemented
+Legend: ✓ = Implemented
 
 ### 11.4 Special Handling Requirements
 
@@ -2188,15 +2294,15 @@ def constraint_to_dict(c: SketchConstraint) -> dict:
 ## 14. Future Extensions
 
 ### 14.1 Additional Primitives
-- **Ellipse**: center, major_axis, minor_axis, rotation
 - **Conic sections**: Generic conic representation
 - **Text**: For annotations (typically not constrained)
 
+Note: Ellipse and EllipticalArc are now fully implemented (see Section 3).
+
 ### 14.2 Additional Constraints
-- **SYMMETRIC**: Two elements symmetric about a line
-- **MIDPOINT_CONSTRAINT**: Point constrained to midpoint of line
-- **COLINEAR**: Multiple lines on same infinite line
 - **PATTERN**: Linear or circular patterns of elements
+
+Note: SYMMETRIC, MIDPOINT_CONSTRAINT, and COLLINEAR are now fully implemented (see Section 4).
 
 ### 14.3 3D Sketch Support
 - Extend `Point2D` → `Point3D`

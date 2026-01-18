@@ -273,6 +273,10 @@ pytest tests/test_inventor_roundtrip.py -v
 
 Tests cover all primitives, constraints, solver status, and edge cases.
 
+## Related Projects
+
+- [SketchBridge](https://github.com/CodeReclaimers/sketch_bridge) - Desktop application for transferring sketches between CAD systems using Morphe
+
 ## License
 
 MIT - see [LICENSE](LICENSE) for details.

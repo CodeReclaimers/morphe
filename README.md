@@ -2,10 +2,11 @@
 
 *Pronounced "mor-FAY" (from Greek [μορφή](https://en.wiktionary.org/wiki/%CE%BC%CE%BF%CF%81%CF%86%CE%AE), meaning "form" or "shape")*
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://github.com/CodeReclaimers/morphe/actions/workflows/test.yml/badge.svg)](https://github.com/CodeReclaimers/morphe/actions/workflows/test.yml)
+[![PyPI version](https://img.shields.io/pypi/v/morphe-sketch.svg)](https://pypi.org/project/morphe-sketch/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/morphe-sketch.svg)](https://pypi.org/project/morphe-sketch/)
+[![Python 3.10+](https://img.shields.io/pypi/pyversions/morphe-sketch.svg)](https://pypi.org/project/morphe-sketch/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://github.com/codereclaimers/morphe/actions/workflows/test.yml/badge.svg)](https://github.com/codereclaimers/morphe/actions/workflows/test.yml)
-[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
 
 A CAD-agnostic 2D sketch geometry and constraint representation with adapter support for FreeCAD, Fusion 360, SolidWorks, and Autodesk Inventor.
 

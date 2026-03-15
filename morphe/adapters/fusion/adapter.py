@@ -1353,9 +1353,9 @@ class FusionAdapter(SketchBackendAdapter):
             start_angle = geom.startAngle
             end_angle = geom.endAngle
 
-            # If end > start in default (CCW), then ccw=True
-            # Otherwise ccw=False
-            ccw = (end_angle > start_angle)
+            # Fusion 360's SketchArc geometry sweep is always CCW from
+            # startAngle to endAngle
+            ccw = True
 
             canonical_arc = Arc(
                 center=center,
@@ -1449,8 +1449,9 @@ class FusionAdapter(SketchBackendAdapter):
             start_param = geom.startAngle
             end_param = geom.endAngle
 
-            # Determine CCW from sweep direction
-            ccw = end_param > start_param
+            # Fusion 360's elliptical arc sweep is always CCW from
+            # startAngle to endAngle
+            ccw = True
 
             canonical_arc = EllipticalArc(
                 center=center,

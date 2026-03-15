@@ -511,9 +511,24 @@ class InventorAdapter(SketchBackendAdapter):
         return points.Add(pt)
 
     def _add_spline(self, spline: Spline) -> Any:
-        """Add a spline to the sketch."""
+        """Add a spline to the sketch.
+
+        Note: Inventor's SketchSplines.Add() creates a fit-point spline.
+        If the incoming spline is not a fit spline (i.e., control_points are
+        B-spline control points, not fit/interpolation points), this import
+        will lose NURBS fidelity — the control points will be treated as
+        fit points.
+        """
         assert self._sketch is not None
         splines = self._sketch.SketchSplines
+
+        if not spline.is_fit_spline:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Importing non-fit spline '%s' as fit spline — "
+                "NURBS fidelity will be lost. Control points are used as fit points.",
+                spline.id
+            )
 
         # Create fit points array
         fit_points = self._app.TransientObjects.CreateObjectCollection()
@@ -524,8 +539,6 @@ class InventorAdapter(SketchBackendAdapter):
             )
             fit_points.Add(point)
 
-        # Use fit points method (simpler than control point method)
-        # For more accurate B-spline, would need SplineControlPointDefinitions
         return splines.Add(fit_points)
 
     def _add_ellipse(self, ellipse: Ellipse) -> Any:
@@ -1090,6 +1103,7 @@ class InventorAdapter(SketchBackendAdapter):
         return Spline(
             control_points=control_points,
             degree=degree,
+            is_fit_spline=True,  # Inventor exports fit points, not B-spline control points
             construction=spline.Construction
         )
 

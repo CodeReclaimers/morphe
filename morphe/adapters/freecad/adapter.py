@@ -556,11 +556,22 @@ class FreeCADAdapter(SketchBackendAdapter):
         idx2 = self._get_element_index(constraint.references[1])
 
         if constraint.connection_point:
-            # Tangent at specific point
+            # Tangent at specific point: use 3-arg form (geo1, vertex_on_geo1, geo2)
+            # Determine which geometry the connection point belongs to
             pt = self._point_ref_to_freecad(constraint.connection_point)
-            sketch.addConstraint(Sketcher.Constraint(
-                'Tangent', idx1, pt[1], idx2, pt[1]
-            ))
+            if pt[0] == idx1:
+                sketch.addConstraint(Sketcher.Constraint(
+                    'Tangent', idx1, pt[1], idx2
+                ))
+            elif pt[0] == idx2:
+                sketch.addConstraint(Sketcher.Constraint(
+                    'Tangent', idx2, pt[1], idx1
+                ))
+            else:
+                # Connection point is on a different geometry; fall back to 4-arg form
+                sketch.addConstraint(Sketcher.Constraint(
+                    'Tangent', idx1, pt[1], idx2, pt[1]
+                ))
         else:
             # General tangent
             sketch.addConstraint(Sketcher.Constraint('Tangent', idx1, idx2))
@@ -868,7 +879,9 @@ class FreeCADAdapter(SketchBackendAdapter):
             # Determine CCW from angles
             start_angle = geo.FirstParameter if hasattr(geo, 'FirstParameter') else 0
             end_angle = geo.LastParameter if hasattr(geo, 'LastParameter') else math.pi
-            ccw = end_angle > start_angle
+            # FreeCAD's ArcOfCircle parameterization is always CCW from
+            # FirstParameter to LastParameter
+            ccw = True
 
             return Arc(
                 center=Point2D(center.x, center.y),
@@ -1199,4 +1212,4 @@ class FreeCADAdapter(SketchBackendAdapter):
             return Point
         elif 'BSpline' in geo_type:
             return Spline
-        return Line  # Default
+        raise ValueError(f"Unrecognized FreeCAD geometry type: {geo_type}")

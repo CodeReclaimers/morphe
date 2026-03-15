@@ -1491,17 +1491,21 @@ class SolidWorksAdapter(SketchBackendAdapter):
                 (center1_x + radius) * MM_TO_M, center1_y * MM_TO_M, 0
             )
         else:  # arc
-            # For arcs, we need start/end angles and radius
-            radius = geom2['radius']
-            start_angle = geom2.get('start_angle', 0)
-            end_angle = geom2.get('end_angle', math.pi)
+            # Compute radius and angles from stored center/start/end points
+            old_cx, old_cy = geom2['center']
+            sx, sy = geom2['start']
+            ex, ey = geom2['end']
+            radius = math.sqrt((sx - old_cx)**2 + (sy - old_cy)**2)
+            start_angle = math.atan2(sy - old_cy, sx - old_cx)
+            end_angle = math.atan2(ey - old_cy, ex - old_cx)
+            direction = 1 if geom2.get('ccw', True) else -1
             new_entity = self._sketch_manager.CreateArc(
                 center1_x * MM_TO_M, center1_y * MM_TO_M, 0,
                 (center1_x + radius * math.cos(start_angle)) * MM_TO_M,
                 (center1_y + radius * math.sin(start_angle)) * MM_TO_M, 0,
                 (center1_x + radius * math.cos(end_angle)) * MM_TO_M,
                 (center1_y + radius * math.sin(end_angle)) * MM_TO_M, 0,
-                1  # Direction
+                direction
             )
 
         # Update mappings
@@ -2607,6 +2611,23 @@ class SolidWorksAdapter(SketchBackendAdapter):
                     center_x, center_y, rotation
                 )
 
+                # Determine arc direction using cross product of
+                # (center→start) × (center→mid) where mid is the arc midpoint.
+                # If cross > 0, the arc goes CCW; if < 0, CW.
+                try:
+                    mid_pt = segment.GetMidPoint()
+                    if mid_pt is not None:
+                        sx_r = start_pt.X * M_TO_MM - center_x
+                        sy_r = start_pt.Y * M_TO_MM - center_y
+                        mx_r = mid_pt.X * M_TO_MM - center_x
+                        my_r = mid_pt.Y * M_TO_MM - center_y
+                        cross = sx_r * my_r - sy_r * mx_r
+                        ccw = cross > 0
+                    else:
+                        ccw = True
+                except Exception:
+                    ccw = True
+
                 return EllipticalArc(
                     center=Point2D(center_x, center_y),
                     major_radius=major_radius,
@@ -2614,7 +2635,7 @@ class SolidWorksAdapter(SketchBackendAdapter):
                     rotation=rotation,
                     start_param=start_param,
                     end_param=end_param,
-                    ccw=True,  # Default to counter-clockwise
+                    ccw=ccw,
                     construction=construction
                 )
             else:
@@ -2704,17 +2725,30 @@ class SolidWorksAdapter(SketchBackendAdapter):
                         if callable(rel_type):
                             rel_type = rel_type()
 
-                        # Get entities count for deduplication key
-                        entities_count = relation.GetEntitiesCount
-                        if callable(entities_count):
-                            entities_count = entities_count()
+                        # Build dedup key from relation type and ALL involved entities.
+                        # The old key (rel_type, segment_id) was too aggressive — it
+                        # would drop a second constraint of the same type on the same
+                        # segment (e.g. two parallel constraints referencing the same line
+                        # with different partners).
+                        involved_ids = []
+                        try:
+                            entities = relation.GetEntities
+                            if callable(entities):
+                                entities = entities()
+                            if entities:
+                                for ent in entities:
+                                    eid = self._entity_to_id.get(id(ent))
+                                    if not eid:
+                                        eid = self._get_entity_id_by_properties(ent)
+                                    if eid:
+                                        involved_ids.append(eid)
+                        except Exception:
+                            pass
+                        if segment_id and segment_id not in involved_ids:
+                            involved_ids.append(segment_id)
 
-                        # Create a key to deduplicate relations
-                        # Include segment_id to distinguish constraints on different entities
-                        # (same relation type on different segments are different constraints)
-                        dedup_key = (rel_type, segment_id)
+                        dedup_key = (rel_type, tuple(sorted(involved_ids)))
                         if dedup_key in seen_relations:
-                            # Skip duplicate
                             continue
 
                         seen_relations.add(dedup_key)
@@ -2938,8 +2972,18 @@ class SolidWorksAdapter(SketchBackendAdapter):
                         elif seg_type == SwSketchSegments.ARC:
                             geom_dof += 5
                 if points:
-                    # Standalone points
-                    geom_dof += len(points) * 2
+                    # Only count standalone points (not segment endpoints).
+                    # Segment endpoints are already accounted for in per-segment DOF.
+                    num_segment_endpoints = 0
+                    if segments:
+                        for seg in segments:
+                            st = self._get_com_result(seg, "GetType")
+                            if st == SwSketchSegments.LINE:
+                                num_segment_endpoints += 2  # start + end
+                            elif st == SwSketchSegments.ARC:
+                                num_segment_endpoints += 3  # center + start + end
+                    standalone_count = max(0, len(points) - num_segment_endpoints)
+                    geom_dof += standalone_count * 2
 
                 # Count constraints by iterating segments (GetSketchRelations doesn't work)
                 constraint_dof = 0

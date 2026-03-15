@@ -1401,10 +1401,8 @@ class InventorAdapter(SketchBackendAdapter):
             return (SolverStatus.DIRTY, -1)
 
         try:
-            # kConstraintStatusFullyConstrained = 51713
-            # kConstraintStatusUnderConstrained = 51714
-            # kConstraintStatusOverConstrained = 51715
-            _FULLY_CONSTRAINED = 51713
+            # Inventor ConstraintStatus enum values
+            fully_constrained = 51713  # kConstraintStatusFullyConstrained
 
             all_constrained = True
             has_entities = False
@@ -1421,7 +1419,7 @@ class InventorAdapter(SketchBackendAdapter):
                         has_entities = True
                         try:
                             status_val = entity.ConstraintStatus
-                            if status_val != _FULLY_CONSTRAINED:
+                            if status_val != fully_constrained:
                                 all_constrained = False
                         except Exception:
                             all_constrained = False

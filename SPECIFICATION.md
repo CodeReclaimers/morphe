@@ -100,7 +100,7 @@ class ElementPrefix:
     POINT = "P"
     SPLINE = "S"
     ELLIPSE = "E"
-    ELLIPTICAL_ARC = "EA"
+    ELLIPTICAL_ARC = "e"
 ```
 
 ---
@@ -418,7 +418,7 @@ class EllipticalArc(SketchPrimitive):
     """
     Arc of an ellipse defined by center, radii, rotation, and angular range.
 
-    Valid point types: START, END, CENTER
+    Valid point types: START, END, CENTER, MIDPOINT
     """
     center: Point2D
     major_radius: float
@@ -433,10 +433,11 @@ class EllipticalArc(SketchPrimitive):
             case PointType.START: return self.point_at_parameter(self.start_param)
             case PointType.END: return self.point_at_parameter(self.end_param)
             case PointType.CENTER: return self.center
+            case PointType.MIDPOINT: return self.midpoint
             case _: raise ValueError(f"Invalid point type {point_type} for EllipticalArc")
 
     def get_valid_point_types(self) -> list[PointType]:
-        return [PointType.START, PointType.END, PointType.CENTER]
+        return [PointType.START, PointType.END, PointType.CENTER, PointType.MIDPOINT]
 
     def point_at_parameter(self, t: float) -> Point2D:
         """Get point on ellipse at parameter t (radians)."""
@@ -578,6 +579,40 @@ CONSTRAINT_RULES = {
         "value_required": True,
         "notes": "Value in degrees"
     },
+    ConstraintType.COLLINEAR: {
+        "min_refs": 2,
+        "max_refs": None,  # Can chain multiple
+        "ref_types": ["line"],
+        "value_required": False,
+    },
+    ConstraintType.DISTANCE_X: {
+        "min_refs": 1,
+        "max_refs": 2,
+        "ref_types": ["point"],
+        "value_required": True,
+        "notes": "One point = distance from origin; two points = horizontal distance between them"
+    },
+    ConstraintType.DISTANCE_Y: {
+        "min_refs": 1,
+        "max_refs": 2,
+        "ref_types": ["point"],
+        "value_required": True,
+        "notes": "One point = distance from origin; two points = vertical distance between them"
+    },
+    ConstraintType.SYMMETRIC: {
+        "min_refs": 3,
+        "max_refs": 3,
+        "ref_types": ["any", "any", "line"],  # Two elements + symmetry axis
+        "value_required": False,
+        "notes": "Third reference is the symmetry axis (line)"
+    },
+    ConstraintType.MIDPOINT: {
+        "min_refs": 2,
+        "max_refs": 2,
+        "ref_types": ["point", "line"],
+        "value_required": False,
+        "notes": "Point constrained to midpoint of line"
+    },
 }
 ```
 
@@ -701,21 +736,25 @@ class SketchDocument:
     
     # ID counters for stable ID generation
     _next_index: dict[str, int] = field(default_factory=lambda: {
-        ElementPrefix.LINE: 0, 
-        ElementPrefix.ARC: 0, 
-        ElementPrefix.CIRCLE: 0, 
-        ElementPrefix.POINT: 0, 
-        ElementPrefix.SPLINE: 0
+        ElementPrefix.LINE: 0,
+        ElementPrefix.ARC: 0,
+        ElementPrefix.CIRCLE: 0,
+        ElementPrefix.POINT: 0,
+        ElementPrefix.SPLINE: 0,
+        ElementPrefix.ELLIPSE: 0,
+        ElementPrefix.ELLIPTICAL_ARC: 0,
     })
     
     def add_primitive(self, primitive: SketchPrimitive) -> str:
         """Add primitive and assign stable ID. Returns the assigned ID."""
         prefix = {
-            Line: ElementPrefix.LINE, 
-            Arc: ElementPrefix.ARC, 
+            Line: ElementPrefix.LINE,
+            Arc: ElementPrefix.ARC,
             Circle: ElementPrefix.CIRCLE,
-            Point: ElementPrefix.POINT, 
-            Spline: ElementPrefix.SPLINE
+            Point: ElementPrefix.POINT,
+            Spline: ElementPrefix.SPLINE,
+            Ellipse: ElementPrefix.ELLIPSE,
+            EllipticalArc: ElementPrefix.ELLIPTICAL_ARC,
         }[type(primitive)]
         
         idx = self._next_index[prefix]
@@ -736,6 +775,11 @@ class SketchDocument:
     
     def add_constraint(self, constraint: SketchConstraint) -> None:
         """Add a constraint to the sketch."""
+        # Validate that all referenced elements exist
+        for elem_id in constraint.get_element_ids():
+            if elem_id not in self.primitives:
+                raise KeyError(f"Constraint references non-existent element '{elem_id}'")
+
         self.constraints.append(constraint)
         self.solver_status = SolverStatus.DIRTY  # Mark as needing re-solve
     
@@ -755,41 +799,54 @@ class SketchDocument:
     def to_text_description(self, include_point_coords: bool = False) -> str:
         """
         Generate human/AI-readable description of the sketch.
-        
+
         Args:
             include_point_coords: If True, list all referenceable points with coordinates
         """
-        lines = ["Elements:"]
+        lines = [f"Sketch: {self.name}", "", "Elements:"]
         for id, prim in sorted(self.primitives.items()):
             lines.append(f"  {self._describe_primitive(prim)}")
             if include_point_coords:
                 for pt_type in prim.get_valid_point_types():
                     pt = prim.get_point(pt_type)
                     lines.append(f"    {id}.{pt_type.value}: ({pt.x:.2f}, {pt.y:.2f})")
-        
+
         lines.append("\nConstraints:")
         for c in self.constraints:
             lines.append(f"  {c}")
-        
+
         lines.append(f"\nStatus: {self.solver_status.value}")
         if self.degrees_of_freedom >= 0:
             lines.append(f"Degrees of Freedom: {self.degrees_of_freedom}")
-        
+
         return "\n".join(lines)
-    
+
     def _describe_primitive(self, p: SketchPrimitive) -> str:
+        const_marker = " [C]" if p.construction else ""
+
         if isinstance(p, Line):
-            return f"{p.id}: Line ({p.start.x:.2f},{p.start.y:.2f}) → ({p.end.x:.2f},{p.end.y:.2f})"
+            return f"{p.id}: Line ({p.start.x:.2f},{p.start.y:.2f}) → ({p.end.x:.2f},{p.end.y:.2f}){const_marker}"
         elif isinstance(p, Arc):
-            return f"{p.id}: Arc center=({p.center.x:.2f},{p.center.y:.2f}) r={p.radius:.2f} {'CCW' if p.ccw else 'CW'}"
+            direction = "CCW" if p.ccw else "CW"
+            return f"{p.id}: Arc center=({p.center.x:.2f},{p.center.y:.2f}) r={p.radius:.2f} {direction}{const_marker}"
         elif isinstance(p, Circle):
-            return f"{p.id}: Circle center=({p.center.x:.2f},{p.center.y:.2f}) r={p.radius:.2f}"
+            return f"{p.id}: Circle center=({p.center.x:.2f},{p.center.y:.2f}) r={p.radius:.2f}{const_marker}"
         elif isinstance(p, Point):
-            return f"{p.id}: Point ({p.position.x:.2f},{p.position.y:.2f})"
+            return f"{p.id}: Point ({p.position.x:.2f},{p.position.y:.2f}){const_marker}"
         elif isinstance(p, Spline):
-            return f"{p.id}: Spline degree={p.degree} points={len(p.control_points)} {'periodic' if p.periodic else 'open'}"
+            periodic = "periodic" if p.periodic else "open"
+            return f"{p.id}: Spline degree={p.degree} points={len(p.control_points)} {periodic}{const_marker}"
+        elif isinstance(p, Ellipse):
+            import math
+            rot_deg = math.degrees(p.rotation)
+            return f"{p.id}: Ellipse center=({p.center.x:.2f},{p.center.y:.2f}) a={p.major_radius:.2f} b={p.minor_radius:.2f} rot={rot_deg:.1f}°{const_marker}"
+        elif isinstance(p, EllipticalArc):
+            import math
+            direction = "CCW" if p.ccw else "CW"
+            rot_deg = math.degrees(p.rotation)
+            return f"{p.id}: EllipticalArc center=({p.center.x:.2f},{p.center.y:.2f}) a={p.major_radius:.2f} b={p.minor_radius:.2f} rot={rot_deg:.1f}° {direction}{const_marker}"
         else:
-            return f"{p.id}: {type(p).__name__}"
+            return f"{p.id}: {type(p).__name__}{const_marker}"
 ```
 
 ---
@@ -2235,11 +2292,29 @@ def primitive_to_dict(p: SketchPrimitive) -> dict:
             "degree": p.degree,
             "control_points": [[pt.x, pt.y] for pt in p.control_points],
             "knots": p.knots,
-            "weights": p.weights,
             "periodic": p.periodic,
             "is_fit_spline": p.is_fit_spline,
         })
-    
+        if p.weights is not None:
+            base["weights"] = p.weights
+    elif isinstance(p, Ellipse):
+        base.update({
+            "center": [p.center.x, p.center.y],
+            "major_radius": p.major_radius,
+            "minor_radius": p.minor_radius,
+            "rotation": p.rotation,
+        })
+    elif isinstance(p, EllipticalArc):
+        base.update({
+            "center": [p.center.x, p.center.y],
+            "major_radius": p.major_radius,
+            "minor_radius": p.minor_radius,
+            "rotation": p.rotation,
+            "start_param": p.start_param,
+            "end_param": p.end_param,
+            "ccw": p.ccw,
+        })
+
     return base
 
 def constraint_to_dict(c: SketchConstraint) -> dict:
@@ -2249,15 +2324,22 @@ def constraint_to_dict(c: SketchConstraint) -> dict:
             refs.append({"element": r.element_id, "point": r.point_type.value})
         else:
             refs.append(r)
-    
-    return {
+
+    result = {
         "id": c.id,
         "type": c.constraint_type.value,
         "references": refs,
-        "value": c.value,
-        "inferred": c.inferred,
-        "confidence": c.confidence,
     }
+
+    # Add optional fields only if they have non-default values
+    if c.value is not None:
+        result["value"] = c.value
+    if c.inferred:
+        result["inferred"] = c.inferred
+    if c.confidence != 1.0:
+        result["confidence"] = c.confidence
+
+    return result
 ```
 
 ### 13.2 Example JSON Output

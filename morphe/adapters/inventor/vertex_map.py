@@ -11,11 +11,47 @@ Inventor sketch entities have these point properties:
 - SketchCircle: CenterSketchPoint
 - SketchPoint: (the point itself)
 - SketchSpline: StartPoint, EndPoint, FitPoints collection
+
+Note: COM late-binding returns 'CDispatch' for all types, so we use
+duck-typing (checking available properties) to identify entity kinds.
 """
 
 from typing import Any
 
 from morphe import PointType
+
+
+def _entity_kind(entity: Any) -> str:
+    """Determine the sketch entity kind via duck-typing.
+
+    Returns one of: 'line', 'arc', 'circle', 'point', 'spline',
+    'ellipse', 'elliptical_arc', or 'unknown'.
+    """
+    # Check for SketchLine (has Start/End but no Center, no Radius)
+    has_start = hasattr(entity, 'StartSketchPoint')
+    has_end = hasattr(entity, 'EndSketchPoint')
+    has_center = hasattr(entity, 'CenterSketchPoint')
+    has_radius = hasattr(entity, 'Radius')
+    has_major = hasattr(entity, 'MajorRadius')
+    has_fit_points = hasattr(entity, 'FitPoints')
+    has_geometry_pt = hasattr(entity, 'Geometry')
+
+    if has_fit_points:
+        return 'spline'
+    if has_major and has_start and has_end:
+        return 'elliptical_arc'
+    if has_major and has_center:
+        return 'ellipse'
+    if has_center and has_start and has_end:
+        return 'arc'
+    if has_center and has_radius and not has_start:
+        return 'circle'
+    if has_start and has_end and not has_center:
+        return 'line'
+    if has_geometry_pt and not has_start and not has_end and not has_center:
+        return 'point'
+
+    return 'unknown'
 
 
 def get_sketch_point_from_entity(entity: Any, point_type: PointType) -> Any:
@@ -32,9 +68,9 @@ def get_sketch_point_from_entity(entity: Any, point_type: PointType) -> Any:
     Raises:
         ValueError: If point type is not valid for the entity type
     """
-    entity_type = type(entity).__name__
+    kind = _entity_kind(entity)
 
-    if 'SketchLine' in entity_type:
+    if kind == 'line':
         if point_type == PointType.START:
             return entity.StartSketchPoint
         elif point_type == PointType.END:
@@ -42,7 +78,7 @@ def get_sketch_point_from_entity(entity: Any, point_type: PointType) -> Any:
         else:
             raise ValueError(f"Invalid point type {point_type} for SketchLine")
 
-    elif 'SketchArc' in entity_type:
+    elif kind == 'arc':
         if point_type == PointType.START:
             return entity.StartSketchPoint
         elif point_type == PointType.END:
@@ -52,33 +88,33 @@ def get_sketch_point_from_entity(entity: Any, point_type: PointType) -> Any:
         else:
             raise ValueError(f"Invalid point type {point_type} for SketchArc")
 
-    elif 'SketchCircle' in entity_type:
+    elif kind == 'circle':
         if point_type == PointType.CENTER:
             return entity.CenterSketchPoint
         else:
             raise ValueError(f"Invalid point type {point_type} for SketchCircle")
 
-    elif 'SketchPoint' in entity_type:
+    elif kind == 'point':
         if point_type == PointType.CENTER:
             return entity
         else:
             raise ValueError(f"Invalid point type {point_type} for SketchPoint")
 
-    elif 'SketchSpline' in entity_type:
+    elif kind == 'spline':
         if point_type == PointType.START:
-            return entity.StartPoint
+            return entity.StartSketchPoint
         elif point_type == PointType.END:
-            return entity.EndPoint
+            return entity.EndSketchPoint
         else:
             raise ValueError(f"Invalid point type {point_type} for SketchSpline")
 
-    elif 'SketchEllipse' in entity_type:
+    elif kind == 'ellipse':
         if point_type == PointType.CENTER:
             return entity.CenterSketchPoint
         else:
             raise ValueError(f"Invalid point type {point_type} for SketchEllipse")
 
-    elif 'SketchEllipticalArc' in entity_type:
+    elif kind == 'elliptical_arc':
         if point_type == PointType.START:
             return entity.StartSketchPoint
         elif point_type == PointType.END:
@@ -89,7 +125,7 @@ def get_sketch_point_from_entity(entity: Any, point_type: PointType) -> Any:
             raise ValueError(f"Invalid point type {point_type} for SketchEllipticalArc")
 
     else:
-        raise ValueError(f"Unknown entity type: {entity_type}")
+        raise ValueError(f"Unknown entity kind for: {type(entity).__name__}")
 
 
 def get_point_type_for_sketch_point(entity: Any, sketch_point: Any) -> PointType | None:
@@ -103,16 +139,16 @@ def get_point_type_for_sketch_point(entity: Any, sketch_point: Any) -> PointType
     Returns:
         PointType if the point belongs to this entity, None otherwise
     """
-    entity_type = type(entity).__name__
+    kind = _entity_kind(entity)
 
     try:
-        if 'SketchLine' in entity_type:
+        if kind == 'line':
             if _same_point(entity.StartSketchPoint, sketch_point):
                 return PointType.START
             elif _same_point(entity.EndSketchPoint, sketch_point):
                 return PointType.END
 
-        elif 'SketchArc' in entity_type:
+        elif kind == 'arc':
             if _same_point(entity.StartSketchPoint, sketch_point):
                 return PointType.START
             elif _same_point(entity.EndSketchPoint, sketch_point):
@@ -120,25 +156,25 @@ def get_point_type_for_sketch_point(entity: Any, sketch_point: Any) -> PointType
             elif _same_point(entity.CenterSketchPoint, sketch_point):
                 return PointType.CENTER
 
-        elif 'SketchCircle' in entity_type:
+        elif kind == 'circle':
             if _same_point(entity.CenterSketchPoint, sketch_point):
                 return PointType.CENTER
 
-        elif 'SketchPoint' in entity_type:
+        elif kind == 'point':
             if _same_point(entity, sketch_point):
                 return PointType.CENTER
 
-        elif 'SketchSpline' in entity_type:
-            if _same_point(entity.StartPoint, sketch_point):
+        elif kind == 'spline':
+            if _same_point(entity.StartSketchPoint, sketch_point):
                 return PointType.START
-            elif _same_point(entity.EndPoint, sketch_point):
+            elif _same_point(entity.EndSketchPoint, sketch_point):
                 return PointType.END
 
-        elif 'SketchEllipse' in entity_type:
+        elif kind == 'ellipse':
             if _same_point(entity.CenterSketchPoint, sketch_point):
                 return PointType.CENTER
 
-        elif 'SketchEllipticalArc' in entity_type:
+        elif kind == 'elliptical_arc':
             if _same_point(entity.StartSketchPoint, sketch_point):
                 return PointType.START
             elif _same_point(entity.EndSketchPoint, sketch_point):
@@ -153,13 +189,14 @@ def get_point_type_for_sketch_point(entity: Any, sketch_point: Any) -> PointType
 
 
 def _same_point(pt1: Any, pt2: Any) -> bool:
-    """Check if two sketch points are the same (by geometry comparison)."""
+    """Check if two sketch points are the same (by COM identity or geometry)."""
     try:
-        # Try direct comparison first
-        if pt1 is pt2:
+        if pt1._oleobj_ == pt2._oleobj_:
             return True
+    except Exception:
+        pass
 
-        # Compare by geometry
+    try:
         g1 = pt1.Geometry
         g2 = pt2.Geometry
         tolerance = 1e-8
@@ -181,21 +218,21 @@ def get_valid_point_types(entity: Any) -> list[PointType]:
     Returns:
         List of valid PointType values for this entity type
     """
-    entity_type = type(entity).__name__
+    kind = _entity_kind(entity)
 
-    if 'SketchLine' in entity_type:
+    if kind == 'line':
         return [PointType.START, PointType.END]
-    elif 'SketchEllipticalArc' in entity_type:
+    elif kind == 'elliptical_arc':
         return [PointType.START, PointType.END, PointType.CENTER]
-    elif 'SketchArc' in entity_type:
+    elif kind == 'arc':
         return [PointType.START, PointType.END, PointType.CENTER]
-    elif 'SketchEllipse' in entity_type:
+    elif kind == 'ellipse':
         return [PointType.CENTER]
-    elif 'SketchCircle' in entity_type:
+    elif kind == 'circle':
         return [PointType.CENTER]
-    elif 'SketchPoint' in entity_type:
+    elif kind == 'point':
         return [PointType.CENTER]
-    elif 'SketchSpline' in entity_type:
+    elif kind == 'spline':
         return [PointType.START, PointType.END]
     else:
         return []

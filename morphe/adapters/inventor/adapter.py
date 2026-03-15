@@ -140,7 +140,7 @@ class InventorAdapter(SketchBackendAdapter):
         if self._document is None:
             # Create a new part document
             self._document = self._app.Documents.Add(
-                12163,  # kPartDocumentObject
+                12290,  # kPartDocumentObject
                 "",     # Default template
                 True    # Create visible
             )
@@ -217,6 +217,10 @@ class InventorAdapter(SketchBackendAdapter):
                 # Log but continue - some constraints may fail
                 pass
 
+        # Update the document to apply all constraint changes to geometry
+        if self._document is not None:
+            self._document.Update()
+
     def export_sketch(self) -> SketchDocument:
         """Export the current Inventor sketch to canonical form.
 
@@ -282,12 +286,22 @@ class InventorAdapter(SketchBackendAdapter):
                 self._entity_to_id[id(elliptical_arc)] = prim.id
                 self._id_to_entity[prim.id] = elliptical_arc
 
-            # Export points
-            for point in sketch.SketchPoints:
-                if self._is_reference_geometry(point):
+            # Export splines
+            for spline in sketch.SketchSplines:
+                if self._is_reference_geometry(spline):
                     continue
-                # Skip points that are part of other geometry
-                if self._is_dependent_point(point):
+                prim = self._export_spline(spline)
+                doc.add_primitive(prim)
+                self._entity_to_id[id(spline)] = prim.id
+                self._id_to_entity[prim.id] = spline
+
+            # Export standalone points (not owned by other geometry)
+            owned_indices = self._collect_owned_sketch_point_indices()
+            for i in range(1, sketch.SketchPoints.Count + 1):
+                if i in owned_indices:
+                    continue
+                point = sketch.SketchPoints.Item(i)
+                if self._is_reference_geometry(point):
                     continue
                 prim = self._export_point(point)
                 doc.add_primitive(prim)
@@ -315,13 +329,78 @@ class InventorAdapter(SketchBackendAdapter):
         except Exception:
             return False
 
-    def _is_dependent_point(self, point: Any) -> bool:
-        """Check if a point is dependent on other geometry (e.g., line endpoint)."""
-        try:
-            # Points with non-empty DependentObjects are part of other geometry
-            return bool(point.DependentObjects.Count > 0)
-        except Exception:
-            return False
+    def _collect_owned_sketch_point_indices(self) -> set[int]:
+        """Collect 1-based indices of SketchPoints owned by other geometry.
+
+        COM object identity is unreliable across accesses, so we match
+        owned points to collection entries using _oleobj_ equality comparison.
+        """
+        assert self._sketch is not None
+        sketch = self._sketch
+
+        # Collect all owned sketch point COM objects
+        owned_objs: list[Any] = []
+
+        for line in sketch.SketchLines:
+            try:
+                owned_objs.append(line.StartSketchPoint)
+                owned_objs.append(line.EndSketchPoint)
+            except Exception:
+                pass
+
+        for arc in sketch.SketchArcs:
+            try:
+                owned_objs.append(arc.StartSketchPoint)
+                owned_objs.append(arc.EndSketchPoint)
+                owned_objs.append(arc.CenterSketchPoint)
+            except Exception:
+                pass
+
+        for circle in sketch.SketchCircles:
+            try:
+                owned_objs.append(circle.CenterSketchPoint)
+            except Exception:
+                pass
+
+        for ellipse in sketch.SketchEllipses:
+            try:
+                owned_objs.append(ellipse.CenterSketchPoint)
+            except Exception:
+                pass
+
+        for earc in sketch.SketchEllipticalArcs:
+            try:
+                owned_objs.append(earc.StartSketchPoint)
+                owned_objs.append(earc.EndSketchPoint)
+                owned_objs.append(earc.CenterSketchPoint)
+            except Exception:
+                pass
+
+        for spline in sketch.SketchSplines:
+            try:
+                for j in range(1, spline.FitPointCount + 1):
+                    owned_objs.append(spline.FitPoint(j))
+            except Exception:
+                pass
+            try:
+                owned_objs.append(spline.StartSketchPoint)
+                owned_objs.append(spline.EndSketchPoint)
+            except Exception:
+                pass
+
+        # Match owned objects to collection indices using _oleobj_ equality
+        owned_indices: set[int] = set()
+        for i in range(1, sketch.SketchPoints.Count + 1):
+            pt = sketch.SketchPoints.Item(i)
+            for owned in owned_objs:
+                try:
+                    if pt._oleobj_ == owned._oleobj_:
+                        owned_indices.add(i)
+                        break
+                except Exception:
+                    pass
+
+        return owned_indices
 
     def add_primitive(self, primitive: SketchPrimitive) -> Any:
         """Add a single primitive to the sketch.
@@ -453,67 +532,59 @@ class InventorAdapter(SketchBackendAdapter):
         """Add an ellipse to the sketch."""
         assert self._sketch is not None
         ellipses = self._sketch.SketchEllipses
+        tg = self._app.TransientGeometry
 
-        center = self._app.TransientGeometry.CreatePoint2d(
+        center = tg.CreatePoint2d(
             ellipse.center.x * MM_TO_CM,
             ellipse.center.y * MM_TO_CM
         )
 
-        # Calculate major axis endpoint
-        major_axis_x = ellipse.major_radius * math.cos(ellipse.rotation)
-        major_axis_y = ellipse.major_radius * math.sin(ellipse.rotation)
-        major_pt = self._app.TransientGeometry.CreatePoint2d(
-            (ellipse.center.x + major_axis_x) * MM_TO_CM,
-            (ellipse.center.y + major_axis_y) * MM_TO_CM
+        # Major axis direction as a unit vector
+        major_axis = tg.CreateUnitVector2d(
+            math.cos(ellipse.rotation),
+            math.sin(ellipse.rotation)
         )
 
-        # Calculate minor axis endpoint (perpendicular to major)
-        minor_axis_x = ellipse.minor_radius * math.cos(ellipse.rotation + math.pi / 2)
-        minor_axis_y = ellipse.minor_radius * math.sin(ellipse.rotation + math.pi / 2)
-        minor_pt = self._app.TransientGeometry.CreatePoint2d(
-            (ellipse.center.x + minor_axis_x) * MM_TO_CM,
-            (ellipse.center.y + minor_axis_y) * MM_TO_CM
-        )
+        major_radius_cm = ellipse.major_radius * MM_TO_CM
+        minor_radius_cm = ellipse.minor_radius * MM_TO_CM
 
-        # Inventor's AddByThreePoints(center, majorAxisPoint, minorAxisPoint)
-        return ellipses.Add(center, major_pt, minor_pt)
+        return ellipses.Add(center, major_axis, major_radius_cm, minor_radius_cm)
 
     def _add_elliptical_arc(self, arc: EllipticalArc) -> Any:
         """Add an elliptical arc to the sketch."""
         assert self._sketch is not None
         elliptical_arcs = self._sketch.SketchEllipticalArcs
+        tg = self._app.TransientGeometry
 
-        center = self._app.TransientGeometry.CreatePoint2d(
+        center = tg.CreatePoint2d(
             arc.center.x * MM_TO_CM,
             arc.center.y * MM_TO_CM
         )
 
-        # Calculate major axis endpoint
-        major_axis_x = arc.major_radius * math.cos(arc.rotation)
-        major_axis_y = arc.major_radius * math.sin(arc.rotation)
-        major_pt = self._app.TransientGeometry.CreatePoint2d(
-            (arc.center.x + major_axis_x) * MM_TO_CM,
-            (arc.center.y + major_axis_y) * MM_TO_CM
+        # Major axis direction as a unit vector
+        major_axis = tg.CreateUnitVector2d(
+            math.cos(arc.rotation),
+            math.sin(arc.rotation)
         )
 
-        # Minor axis ratio
-        minor_ratio = arc.minor_radius / arc.major_radius
+        major_radius_cm = arc.major_radius * MM_TO_CM
+        minor_radius_cm = arc.minor_radius * MM_TO_CM
 
-        # Calculate start and end points
-        start_pt_canonical = arc.start_point
-        end_pt_canonical = arc.end_point
+        # Inventor API: Add(center, majorAxis, majorRadius, minorRadius,
+        #                    startAngle, sweepAngle)
+        start_angle = arc.start_param
+        sweep = arc.end_param - arc.start_param
+        if arc.ccw:
+            if sweep <= 0:
+                sweep += 2 * math.pi
+        else:
+            if sweep >= 0:
+                sweep -= 2 * math.pi
 
-        start_pt = self._app.TransientGeometry.CreatePoint2d(
-            start_pt_canonical.x * MM_TO_CM,
-            start_pt_canonical.y * MM_TO_CM
+        return elliptical_arcs.Add(
+            center, major_axis, major_radius_cm, minor_radius_cm,
+            start_angle, sweep
         )
-        end_pt = self._app.TransientGeometry.CreatePoint2d(
-            end_pt_canonical.x * MM_TO_CM,
-            end_pt_canonical.y * MM_TO_CM
-        )
-
-        # Inventor's AddByMajorMinorAxisStartEnd(center, majorAxisPoint, minorRatio, startPoint, endPoint)
-        return elliptical_arcs.Add(center, major_pt, minor_ratio, start_pt, end_pt)
 
     # =========================================================================
     # Constraint Methods
@@ -610,13 +681,18 @@ class InventorAdapter(SketchBackendAdapter):
     # Geometric constraint implementations
 
     def _add_coincident(self, constraints: Any, refs: list) -> bool:
-        """Add a coincident constraint."""
+        """Add a coincident constraint.
+
+        Inventor's AddCoincident constrains a point to an entity (not
+        point-to-point). For two sketch points, use SketchPoint.Merge
+        to merge them into a single shared point.
+        """
         if len(refs) < 2:
             raise ConstraintError("Coincident requires 2 references")
 
         pt1 = self._get_sketch_point(refs[0])
         pt2 = self._get_sketch_point(refs[1])
-        constraints.AddCoincident(pt1, pt2)
+        pt1.Merge(pt2)
         return True
 
     def _add_tangent(self, constraints: Any, refs: list) -> bool:
@@ -759,9 +835,13 @@ class InventorAdapter(SketchBackendAdapter):
         if len(refs) < 1:
             raise ConstraintError("Ground requires 1 reference")
 
-        entity = self._get_entity(refs[0])
+        ref = refs[0]
+        if isinstance(ref, PointRef):
+            entity = self._get_sketch_point(ref)
+        else:
+            entity = self._get_entity(ref)
         constraints.AddGround(entity)
-        self._ground_constraints.add(refs[0] if isinstance(refs[0], str) else refs[0].element_id)
+        self._ground_constraints.add(ref if isinstance(ref, str) else ref.element_id)
         return True
 
     # Dimensional constraint implementations
@@ -779,7 +859,8 @@ class InventorAdapter(SketchBackendAdapter):
         mid_y = (pt1.Geometry.Y + pt2.Geometry.Y) / 2
         dim_pos = self._app.TransientGeometry.CreatePoint2d(mid_x, mid_y + 1.0)
 
-        dim = constraints.AddTwoPointDistance(pt1, pt2, dim_pos)
+        # kAlignedDim = 19203
+        dim = constraints.AddTwoPointDistance(pt1, pt2, 19203, dim_pos)
         dim.Parameter.Value = value * MM_TO_CM
         return True
 
@@ -789,14 +870,14 @@ class InventorAdapter(SketchBackendAdapter):
         if value is None:
             raise ConstraintError("DistanceX requires a value")
 
+        # kHorizontalDim = 19201
         if len(refs) == 1:
-            # Distance from origin
             pt = self._get_sketch_point(refs[0])
             origin = self._sketch.OriginPoint
             dim_pos = self._app.TransientGeometry.CreatePoint2d(
                 pt.Geometry.X / 2, pt.Geometry.Y + 1.0
             )
-            dim = constraints.AddTwoPointDistance(origin, pt, dim_pos)
+            dim = constraints.AddTwoPointDistance(origin, pt, 19201, dim_pos)
         else:
             pt1 = self._get_sketch_point(refs[0])
             pt2 = self._get_sketch_point(refs[1])
@@ -804,7 +885,7 @@ class InventorAdapter(SketchBackendAdapter):
                 (pt1.Geometry.X + pt2.Geometry.X) / 2,
                 max(pt1.Geometry.Y, pt2.Geometry.Y) + 1.0
             )
-            dim = constraints.AddTwoPointDistance(pt1, pt2, dim_pos)
+            dim = constraints.AddTwoPointDistance(pt1, pt2, 19201, dim_pos)
 
         dim.Parameter.Value = abs(value) * MM_TO_CM
         return True
@@ -815,14 +896,14 @@ class InventorAdapter(SketchBackendAdapter):
         if value is None:
             raise ConstraintError("DistanceY requires a value")
 
+        # kVerticalDim = 19202
         if len(refs) == 1:
-            # Distance from origin
             pt = self._get_sketch_point(refs[0])
             origin = self._sketch.OriginPoint
             dim_pos = self._app.TransientGeometry.CreatePoint2d(
                 pt.Geometry.X + 1.0, pt.Geometry.Y / 2
             )
-            dim = constraints.AddTwoPointDistance(origin, pt, dim_pos)
+            dim = constraints.AddTwoPointDistance(origin, pt, 19202, dim_pos)
         else:
             pt1 = self._get_sketch_point(refs[0])
             pt2 = self._get_sketch_point(refs[1])
@@ -830,7 +911,7 @@ class InventorAdapter(SketchBackendAdapter):
                 max(pt1.Geometry.X, pt2.Geometry.X) + 1.0,
                 (pt1.Geometry.Y + pt2.Geometry.Y) / 2
             )
-            dim = constraints.AddTwoPointDistance(pt1, pt2, dim_pos)
+            dim = constraints.AddTwoPointDistance(pt1, pt2, 19202, dim_pos)
 
         dim.Parameter.Value = abs(value) * MM_TO_CM
         return True
@@ -841,12 +922,14 @@ class InventorAdapter(SketchBackendAdapter):
             raise ConstraintError("Length requires 1 reference and a value")
 
         line = self._get_entity(refs[0])
-        # Position dimension above the line
-        mid_x = (line.StartSketchPoint.Geometry.X + line.EndSketchPoint.Geometry.X) / 2
-        mid_y = (line.StartSketchPoint.Geometry.Y + line.EndSketchPoint.Geometry.Y) / 2
+        pt1 = line.StartSketchPoint
+        pt2 = line.EndSketchPoint
+        mid_x = (pt1.Geometry.X + pt2.Geometry.X) / 2
+        mid_y = (pt1.Geometry.Y + pt2.Geometry.Y) / 2
         dim_pos = self._app.TransientGeometry.CreatePoint2d(mid_x, mid_y + 1.0)
 
-        dim = constraints.AddLinearDimension(line, dim_pos)
+        # kAlignedDim = 19203
+        dim = constraints.AddTwoPointDistance(pt1, pt2, 19203, dim_pos)
         dim.Parameter.Value = value * MM_TO_CM
         return True
 
@@ -856,7 +939,6 @@ class InventorAdapter(SketchBackendAdapter):
             raise ConstraintError("Radius requires 1 reference and a value")
 
         entity = self._get_entity(refs[0])
-        # Position dimension outside the arc/circle
         try:
             center = entity.CenterSketchPoint.Geometry
         except Exception:
@@ -866,7 +948,7 @@ class InventorAdapter(SketchBackendAdapter):
             center.Y
         )
 
-        dim = constraints.AddRadiusDimension(entity, dim_pos)
+        dim = constraints.AddRadius(entity, dim_pos)
         dim.Parameter.Value = value * MM_TO_CM
         return True
 
@@ -885,7 +967,7 @@ class InventorAdapter(SketchBackendAdapter):
             center.Y
         )
 
-        dim = constraints.AddDiameterDimension(entity, dim_pos)
+        dim = constraints.AddDiameter(entity, dim_pos)
         dim.Parameter.Value = value * MM_TO_CM
         return True
 
@@ -976,6 +1058,40 @@ class InventorAdapter(SketchBackendAdapter):
             point.Geometry.Y * CM_TO_MM
         )
         return Point(position=pos)
+
+    def _export_spline(self, spline: Any) -> Spline:
+        """Export an Inventor spline to canonical format."""
+        control_points = []
+        try:
+            for i in range(1, spline.FitPointCount + 1):
+                fp = spline.FitPoint(i)
+                control_points.append(Point2D(
+                    fp.Geometry.X * CM_TO_MM,
+                    fp.Geometry.Y * CM_TO_MM
+                ))
+        except Exception:
+            try:
+                control_points.append(Point2D(
+                    spline.StartSketchPoint.Geometry.X * CM_TO_MM,
+                    spline.StartSketchPoint.Geometry.Y * CM_TO_MM
+                ))
+                control_points.append(Point2D(
+                    spline.EndSketchPoint.Geometry.X * CM_TO_MM,
+                    spline.EndSketchPoint.Geometry.Y * CM_TO_MM
+                ))
+            except Exception:
+                pass
+
+        try:
+            degree = spline.SplineDefinition.Order - 1
+        except Exception:
+            degree = 3
+
+        return Spline(
+            control_points=control_points,
+            degree=degree,
+            construction=spline.Construction
+        )
 
     def _export_ellipse(self, ellipse: Any) -> Ellipse:
         """Export an Inventor ellipse to canonical format."""
@@ -1277,20 +1393,49 @@ class InventorAdapter(SketchBackendAdapter):
 
         Returns:
             Tuple of (SolverStatus, degrees_of_freedom)
+
+        Note: Inventor does not expose IsFullyConstrained or DOF via late
+        binding COM. We check each entity's ConstraintStatus instead.
         """
         if self._sketch is None:
             return (SolverStatus.DIRTY, -1)
 
         try:
-            # Inventor doesn't expose DOF directly like FreeCAD
-            # We can check if sketch is fully constrained
-            if self._sketch.IsFullyConstrained:
+            # kConstraintStatusFullyConstrained = 51713
+            # kConstraintStatusUnderConstrained = 51714
+            # kConstraintStatusOverConstrained = 51715
+            _FULLY_CONSTRAINED = 51713
+
+            all_constrained = True
+            has_entities = False
+
+            for collection_name in [
+                'SketchLines', 'SketchCircles', 'SketchArcs',
+                'SketchEllipses', 'SketchEllipticalArcs', 'SketchPoints'
+            ]:
+                try:
+                    collection = getattr(self._sketch, collection_name)
+                    for entity in collection:
+                        if self._is_reference_geometry(entity):
+                            continue
+                        has_entities = True
+                        try:
+                            status_val = entity.ConstraintStatus
+                            if status_val != _FULLY_CONSTRAINED:
+                                all_constrained = False
+                        except Exception:
+                            all_constrained = False
+                except Exception:
+                    pass
+
+            if not has_entities:
                 return (SolverStatus.FULLY_CONSTRAINED, 0)
-            else:
-                # Estimate DOF based on geometry and constraints
-                # This is a rough approximation
-                dof = self._estimate_dof()
-                return (SolverStatus.UNDER_CONSTRAINED, dof)
+
+            if all_constrained:
+                return (SolverStatus.FULLY_CONSTRAINED, 0)
+
+            dof = self._estimate_dof()
+            return (SolverStatus.UNDER_CONSTRAINED, dof)
 
         except Exception:
             return (SolverStatus.INCONSISTENT, -1)

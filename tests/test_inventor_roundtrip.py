@@ -45,7 +45,7 @@ from morphe import (
 
 # Try to import the Inventor adapter
 try:
-    from adapter_inventor import INVENTOR_AVAILABLE, InventorAdapter
+    from morphe.adapters.inventor import INVENTOR_AVAILABLE, InventorAdapter
 except ImportError:
     INVENTOR_AVAILABLE = False
     InventorAdapter = None  # type: ignore[misc,assignment]
@@ -365,9 +365,9 @@ class TestInventorRoundTripConstraints:
         adapter.load_sketch(sketch)
         exported = adapter.export_sketch()
 
-        prims = list(exported.primitives.values())
-        line1 = next(p for p in prims if abs(p.start.x) < 1)
-        line2 = next(p for p in prims if p != line1)
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        line1 = next(p for p in lines if abs(p.start.x) < 1)
+        line2 = next(p for p in lines if p != line1)
 
         # The end of line1 should coincide with the start of line2
         dist = math.sqrt(
@@ -866,8 +866,8 @@ class TestInventorRoundTripConstraintsAdvanced:
         ))
         sketch.add_constraint(DistanceX(
             PointRef(line_id, PointType.START),
-            PointRef(line_id, PointType.END),
-            value=80
+            80,
+            pt2=PointRef(line_id, PointType.END),
         ))
 
         adapter.create_sketch(sketch.name)
@@ -887,8 +887,8 @@ class TestInventorRoundTripConstraintsAdvanced:
         ))
         sketch.add_constraint(DistanceY(
             PointRef(line_id, PointType.START),
-            PointRef(line_id, PointType.END),
-            value=70
+            70,
+            pt2=PointRef(line_id, PointType.END),
         ))
 
         adapter.create_sketch(sketch.name)
@@ -988,7 +988,7 @@ class TestInventorRoundTripComplexScenarios:
         adapter.load_sketch(sketch)
         exported = adapter.export_sketch()
 
-        circles = list(exported.primitives.values())
+        circles = [p for p in exported.primitives.values() if isinstance(p, Circle)]
         centers = [(c.center.x, c.center.y) for c in circles]
 
         # All centers should be the same
@@ -1011,7 +1011,7 @@ class TestInventorRoundTripComplexScenarios:
         adapter.load_sketch(sketch)
         exported = adapter.export_sketch()
 
-        circles = list(exported.primitives.values())
+        circles = [p for p in exported.primitives.values() if isinstance(p, Circle)]
         assert abs(circles[0].radius - circles[1].radius) < 1e-6
 
 
@@ -1185,7 +1185,8 @@ class TestInventorRoundTripAdditional:
         adapter.load_sketch(sketch)
         exported = adapter.export_sketch()
 
-        lines = list(exported.primitives.values())
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
+        assert len(lines) == 3
         lengths = [
             math.sqrt((line.end.x - line.start.x)**2 + (line.end.y - line.start.y)**2)
             for line in lines
@@ -1214,7 +1215,7 @@ class TestInventorRoundTripAdditional:
         adapter.load_sketch(sketch)
         exported = adapter.export_sketch()
 
-        lines = list(exported.primitives.values())
+        lines = [p for p in exported.primitives.values() if isinstance(p, Line)]
         # The order may change during round-trip, so just verify we have 3 lines
         assert len(lines) == 3
 

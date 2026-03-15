@@ -5,7 +5,7 @@ from enum import Enum
 
 from .constraints import CONSTRAINT_RULES, ConstraintType, SketchConstraint
 from .document import SketchDocument
-from .primitives import Arc, Circle, Line, Point, SketchPrimitive, Spline
+from .primitives import Arc, Circle, Ellipse, EllipticalArc, Line, Point, SketchPrimitive, Spline
 from .types import PointRef, PointType
 
 
@@ -157,6 +157,10 @@ def _validate_primitive(prim: SketchPrimitive, result: ValidationResult,
         _validate_point(prim, result)
     elif isinstance(prim, Spline):
         _validate_spline(prim, result, tolerance)
+    elif isinstance(prim, Ellipse):
+        _validate_ellipse(prim, result)
+    elif isinstance(prim, EllipticalArc):
+        _validate_elliptical_arc(prim, result)
 
 
 def _validate_line(line: Line, result: ValidationResult, tolerance: float) -> None:
@@ -343,6 +347,100 @@ def _validate_spline(spline: Spline, result: ValidationResult, tolerance: float)
                     "SPLINE_INVALID_WEIGHT",
                     spline.id
                 )
+
+
+def _validate_ellipse(ellipse: Ellipse, result: ValidationResult) -> None:
+    """Validate an ellipse primitive."""
+
+    # Check for NaN/inf coordinates
+    for coord in [ellipse.center.x, ellipse.center.y]:
+        if not _is_finite(coord):
+            result.add_error(
+                "Ellipse has non-finite center coordinates",
+                "ELLIPSE_INVALID_COORDS",
+                ellipse.id
+            )
+            return
+
+    # Check radii
+    if ellipse.major_radius <= 0:
+        result.add_error(
+            f"Ellipse major_radius must be positive (got {ellipse.major_radius})",
+            "ELLIPSE_INVALID_MAJOR_RADIUS",
+            ellipse.id
+        )
+
+    if ellipse.minor_radius <= 0:
+        result.add_error(
+            f"Ellipse minor_radius must be positive (got {ellipse.minor_radius})",
+            "ELLIPSE_INVALID_MINOR_RADIUS",
+            ellipse.id
+        )
+
+    if ellipse.major_radius < ellipse.minor_radius:
+        result.add_error(
+            f"Ellipse major_radius ({ellipse.major_radius}) must be >= minor_radius ({ellipse.minor_radius})",
+            "ELLIPSE_MAJOR_LESS_THAN_MINOR",
+            ellipse.id
+        )
+
+
+def _validate_elliptical_arc(arc: EllipticalArc, result: ValidationResult) -> None:
+    """Validate an elliptical arc primitive."""
+
+    # Check for NaN/inf coordinates
+    for coord in [arc.center.x, arc.center.y]:
+        if not _is_finite(coord):
+            result.add_error(
+                "EllipticalArc has non-finite center coordinates",
+                "ELLIPTICAL_ARC_INVALID_COORDS",
+                arc.id
+            )
+            return
+
+    # Check radii
+    if arc.major_radius <= 0:
+        result.add_error(
+            f"EllipticalArc major_radius must be positive (got {arc.major_radius})",
+            "ELLIPTICAL_ARC_INVALID_MAJOR_RADIUS",
+            arc.id
+        )
+
+    if arc.minor_radius <= 0:
+        result.add_error(
+            f"EllipticalArc minor_radius must be positive (got {arc.minor_radius})",
+            "ELLIPTICAL_ARC_INVALID_MINOR_RADIUS",
+            arc.id
+        )
+
+    if arc.major_radius < arc.minor_radius:
+        result.add_error(
+            f"EllipticalArc major_radius ({arc.major_radius}) must be >= minor_radius ({arc.minor_radius})",
+            "ELLIPTICAL_ARC_MAJOR_LESS_THAN_MINOR",
+            arc.id
+        )
+
+    # Check parametric angles
+    if not _is_finite(arc.start_param):
+        result.add_error(
+            "EllipticalArc has non-finite start_param",
+            "ELLIPTICAL_ARC_INVALID_START_PARAM",
+            arc.id
+        )
+
+    if not _is_finite(arc.end_param):
+        result.add_error(
+            "EllipticalArc has non-finite end_param",
+            "ELLIPTICAL_ARC_INVALID_END_PARAM",
+            arc.id
+        )
+
+    if arc.start_param == arc.end_param:
+        result.add_error(
+            "EllipticalArc start_param and end_param must differ",
+            "ELLIPTICAL_ARC_ZERO_SWEEP",
+            arc.id
+        )
 
 
 def _validate_constraint(constraint: SketchConstraint, sketch: SketchDocument,

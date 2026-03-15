@@ -105,6 +105,14 @@ class SketchDocument:
         if element_id in self.primitives:
             raise ValueError(f"Element ID '{element_id}' already exists")
 
+        # Validate that the prefix matches the primitive type
+        expected_prefix = self._get_prefix_for_type(type(primitive))
+        if element_id and not element_id.startswith(expected_prefix):
+            raise ValueError(
+                f"Element ID '{element_id}' has prefix '{element_id[0]}' but expected "
+                f"'{expected_prefix}' for {type(primitive).__name__}"
+            )
+
         primitive.id = element_id
         self.primitives[element_id] = primitive
 
@@ -158,6 +166,11 @@ class SketchDocument:
             if ref.index is None:
                 raise ValueError("CONTROL point type requires index")
             return prim.get_control_point(ref.index)
+
+        if ref.point_type == PointType.ON_CURVE:
+            raise NotImplementedError(
+                "ON_CURVE point resolution requires curve evaluation, which is not yet implemented"
+            )
 
         return prim.get_point(ref.point_type)
 

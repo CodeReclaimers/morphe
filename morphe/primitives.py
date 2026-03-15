@@ -298,6 +298,11 @@ class Spline(SketchPrimitive):
         Note: This is a simplified implementation. For production use,
         consider using scipy.interpolate.BSpline or similar.
         """
+        if self.is_rational:
+            raise NotImplementedError(
+                "evaluate() does not support rational (NURBS) splines — weights are ignored"
+            )
+
         if not self.control_points or not self.knots:
             raise ValueError("Spline not properly initialized")
 
@@ -397,6 +402,11 @@ class Ellipse(SketchPrimitive):
     @property
     def eccentricity(self) -> float:
         """Calculate ellipse eccentricity (0 = circle, approaching 1 = very elongated)."""
+        if self.minor_radius > self.major_radius:
+            raise ValueError(
+                f"minor_radius ({self.minor_radius}) > major_radius ({self.major_radius}): "
+                "invalid ellipse geometry"
+            )
         if self.major_radius == 0:
             return 0.0
         return math.sqrt(1 - (self.minor_radius / self.major_radius) ** 2)
@@ -404,6 +414,11 @@ class Ellipse(SketchPrimitive):
     @property
     def focal_distance(self) -> float:
         """Distance from center to each focus."""
+        if self.minor_radius > self.major_radius:
+            raise ValueError(
+                f"minor_radius ({self.minor_radius}) > major_radius ({self.major_radius}): "
+                "invalid ellipse geometry"
+            )
         return math.sqrt(self.major_radius ** 2 - self.minor_radius ** 2)
 
     @property

@@ -167,8 +167,12 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
 
     prim: SketchPrimitive
     if prim_type == "line":
-        start = _parse_point(data.get("start", [0, 0]))
-        end = _parse_point(data.get("end", [0, 0]))
+        if "start" not in data:
+            raise ValueError(f"Line primitive missing required field 'start': {id_val}")
+        if "end" not in data:
+            raise ValueError(f"Line primitive missing required field 'end': {id_val}")
+        start = _parse_point(data["start"])
+        end = _parse_point(data["end"])
         prim = Line(
             id=id_val,
             construction=construction,
@@ -178,9 +182,12 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
             end=end
         )
     elif prim_type == "arc":
-        center = _parse_point(data.get("center", [0, 0]))
-        start_point = _parse_point(data.get("start_point", [0, 0]))
-        end_point = _parse_point(data.get("end_point", [0, 0]))
+        for field_name in ("center", "start_point", "end_point"):
+            if field_name not in data:
+                raise ValueError(f"Arc primitive missing required field '{field_name}': {id_val}")
+        center = _parse_point(data["center"])
+        start_point = _parse_point(data["start_point"])
+        end_point = _parse_point(data["end_point"])
         ccw = data.get("ccw", True)
         prim = Arc(
             id=id_val,
@@ -193,7 +200,9 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
             ccw=ccw
         )
     elif prim_type == "circle":
-        center = _parse_point(data.get("center", [0, 0]))
+        if "center" not in data:
+            raise ValueError(f"Circle primitive missing required field 'center': {id_val}")
+        center = _parse_point(data["center"])
         radius = data.get("radius", 1.0)
         prim = Circle(
             id=id_val,
@@ -204,7 +213,9 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
             radius=radius
         )
     elif prim_type == "point":
-        position = _parse_point(data.get("position", [0, 0]))
+        if "position" not in data:
+            raise ValueError(f"Point primitive missing required field 'position': {id_val}")
+        position = _parse_point(data["position"])
         prim = Point(
             id=id_val,
             construction=construction,
@@ -213,7 +224,9 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
             position=position
         )
     elif prim_type == "spline":
-        control_points = [_parse_point(pt) for pt in data.get("control_points", [])]
+        if "control_points" not in data:
+            raise ValueError(f"Spline primitive missing required field 'control_points': {id_val}")
+        control_points = [_parse_point(pt) for pt in data["control_points"]]
         prim = Spline(
             id=id_val,
             construction=construction,
@@ -227,7 +240,9 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
             is_fit_spline=data.get("is_fit_spline", False)
         )
     elif prim_type == "ellipse":
-        center = _parse_point(data.get("center", [0, 0]))
+        if "center" not in data:
+            raise ValueError(f"Ellipse primitive missing required field 'center': {id_val}")
+        center = _parse_point(data["center"])
         prim = Ellipse(
             id=id_val,
             construction=construction,
@@ -239,7 +254,9 @@ def dict_to_primitive(data: dict) -> SketchPrimitive:
             rotation=data.get("rotation", 0.0),
         )
     elif prim_type == "ellipticalarc":
-        center = _parse_point(data.get("center", [0, 0]))
+        if "center" not in data:
+            raise ValueError(f"EllipticalArc primitive missing required field 'center': {id_val}")
+        center = _parse_point(data["center"])
         prim = EllipticalArc(
             id=id_val,
             construction=construction,
@@ -352,7 +369,7 @@ def dict_to_point_ref(data: dict) -> PointRef:
 def _parse_point(data: list) -> Point2D:
     """Parse a point from [x, y] array format."""
     if len(data) < 2:
-        return Point2D(0, 0)
+        raise ValueError(f"Expected [x, y] array, got {data!r}")
     return Point2D(float(data[0]), float(data[1]))
 
 

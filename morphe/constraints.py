@@ -225,7 +225,7 @@ class SketchConstraint:
 
 def _generate_id() -> str:
     """Generate a short unique ID for constraints."""
-    return str(uuid.uuid4())[:8]
+    return str(uuid.uuid4())[:12]
 
 
 # Convenience constructors

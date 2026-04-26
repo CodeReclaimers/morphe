@@ -73,14 +73,12 @@ contract. It is generated from the Python implementation
 CI (`.github/workflows/cpp.yml`) runs both checks on Ubuntu (gcc-13,
 clang-18), macOS, and Windows.
 
-## Spec divergence note
+## Decoder leniency
 
-`SPECIFICATION.md` §13.2 shows constraint JSON with `value: null,
-inferred: false, confidence: 1.0` emitted explicitly. The actual
-Python encoder in `morphe/serialization.py` omits these fields at
-their default values; this C++ implementation matches the encoder
-behavior, not the §13.2 example. The spec text should be reconciled
-in a separate change.
-
-The C++ decoder accepts both forms (null and absent), so reading
-older documents that use the verbose §13.2 style still works.
+The C++ decoder accepts both the omit-when-default form (the
+canonical wire format described in `SPECIFICATION.md` §13.1.1) and
+the verbose form with explicit defaults (`"value": null,
+"inferred": false, "confidence": 1.0`). Documents from older or
+third-party encoders that emit defaults explicitly therefore load
+correctly. Round-tripping through `morphe::to_json` normalizes them
+to the minimal form.

@@ -119,9 +119,8 @@ class PointType(Enum):
     CENTER = "center"      # Arc center, Circle center
     MIDPOINT = "midpoint"  # Computed midpoint (lines and arcs)
     
-    # For splines (future)
-    CONTROL = "control"    # Control point (requires index)
-    ON_CURVE = "on_curve"  # Arbitrary point (requires parameter)
+    CONTROL = "control"    # Spline control point (requires index)
+    ON_CURVE = "on_curve"  # Reserved; see "ON_CURVE status" below
 
 @dataclass(frozen=True)
 class PointRef:
@@ -143,6 +142,22 @@ class PointRef:
             return f"{self.element_id}.{self.point_type.value}[{self.index}]"
         return f"{self.element_id}.{self.point_type.value}"
 ```
+
+#### ON_CURVE status
+
+`PointType.ON_CURVE` is reserved in the schema but is not currently
+supported by any primitive: no primitive's `get_valid_point_types()`
+includes it, and `SketchDocument.get_point()` raises
+`NotImplementedError` for ON_CURVE references. A `PointRef` with
+`point_type=ON_CURVE` therefore fails validation (error code
+`CONST_INVALID_POINT_TYPE`) regardless of which primitive it
+targets. The enum value and the `parameter` field on `PointRef`
+are kept for forward compatibility — encoders MUST round-trip
+ON_CURVE through (de)serialization, but conforming sketches SHOULD
+NOT emit ON_CURVE point references until a future revision wires
+the resolution path through `get_valid_point_types()` and
+`get_point()` on the appropriate curve primitives (Spline, Arc,
+EllipticalArc).
 
 ### 3.2 Primitive Base Class
 
@@ -2244,9 +2259,21 @@ def validate_constraint(c: SketchConstraint, sketch: SketchDocument) -> list[str
 
 ### 13.1 JSON Schema
 
+The wire format is JSON. The top-level object has exactly five keys,
+emitted in this order: `name`, `primitives`, `constraints`,
+`solver_status`, `degrees_of_freedom`.
+
+`Point2D` is encoded as a 2-element array `[x, y]`, not as an object.
+`PointRef` is encoded as `{"element": <id>, "point": <PointType value>}`,
+optionally extended with `"parameter"` (for ON_CURVE) and/or `"index"`
+(for CONTROL).
+
+Primitive type tags are lowercase with no separators: `"line"`, `"arc"`,
+`"circle"`, `"point"`, `"spline"`, `"ellipse"`, `"ellipticalarc"`. Note
+that `EllipticalArc` is one word in the wire format.
+
 ```python
 import json
-from dataclasses import asdict
 
 def sketch_to_json(sketch: SketchDocument) -> str:
     """Serialize sketch to JSON."""
@@ -2265,7 +2292,12 @@ def primitive_to_dict(p: SketchPrimitive) -> dict:
         "type": type(p).__name__.lower(),
         "construction": p.construction,
     }
-    
+    # Default-value omission (see §13.1.1)
+    if p.source is not None:
+        base["source"] = p.source
+    if p.confidence != 1.0:
+        base["confidence"] = p.confidence
+
     if isinstance(p, Line):
         base.update({
             "start": [p.start.x, p.start.y],
@@ -2295,7 +2327,7 @@ def primitive_to_dict(p: SketchPrimitive) -> dict:
             "periodic": p.periodic,
             "is_fit_spline": p.is_fit_spline,
         })
-        if p.weights is not None:
+        if p.weights is not None:           # Default-value omission
             base["weights"] = p.weights
     elif isinstance(p, Ellipse):
         base.update({
@@ -2314,14 +2346,13 @@ def primitive_to_dict(p: SketchPrimitive) -> dict:
             "end_param": p.end_param,
             "ccw": p.ccw,
         })
-
     return base
 
 def constraint_to_dict(c: SketchConstraint) -> dict:
     refs = []
     for r in c.references:
         if isinstance(r, PointRef):
-            refs.append({"element": r.element_id, "point": r.point_type.value})
+            refs.append(point_ref_to_dict(r))
         else:
             refs.append(r)
 
@@ -2330,19 +2361,67 @@ def constraint_to_dict(c: SketchConstraint) -> dict:
         "type": c.constraint_type.value,
         "references": refs,
     }
-
-    # Add optional fields only if they have non-default values
+    # Default-value omission (see §13.1.1)
     if c.value is not None:
         result["value"] = c.value
+    if c.connection_point is not None:
+        result["connection_point"] = point_ref_to_dict(c.connection_point)
     if c.inferred:
         result["inferred"] = c.inferred
     if c.confidence != 1.0:
         result["confidence"] = c.confidence
+    if c.source is not None:
+        result["source"] = c.source
+    if c.status != ConstraintStatus.UNKNOWN:
+        result["status"] = c.status.value
+    return result
 
+def point_ref_to_dict(ref: PointRef) -> dict:
+    result = {"element": ref.element_id, "point": ref.point_type.value}
+    if ref.parameter is not None:           # Default-value omission
+        result["parameter"] = ref.parameter
+    if ref.index is not None:               # Default-value omission
+        result["index"] = ref.index
     return result
 ```
 
+### 13.1.1 Default-value omission
+
+Encoders **MUST** omit optional fields whose value is the default. This
+keeps the wire format compact and makes the presence of a field
+semantically meaningful ("this was set" rather than "this exists with
+its default"). Specifically:
+
+| Object | Field | Omitted when |
+|---|---|---|
+| Primitive | `source` | value is `null` |
+| Primitive | `confidence` | value is `1.0` |
+| Spline | `weights` | value is `null` (non-rational spline) |
+| Constraint | `value` | value is `null` |
+| Constraint | `connection_point` | value is `null` |
+| Constraint | `inferred` | value is `false` |
+| Constraint | `confidence` | value is `1.0` |
+| Constraint | `source` | value is `null` |
+| Constraint | `status` | value is `"unknown"` |
+| PointRef | `parameter` | value is `null` |
+| PointRef | `index` | value is `null` |
+
+Decoders **MUST** accept both forms — fields absent and fields present
+with explicit default values (e.g., `"value": null`, `"inferred": false`).
+A decoder that accepts the verbose form preserves compatibility with
+documents written by older or third-party encoders that did not apply
+omission. A round-trip through a conforming encoder normalizes such
+documents to the minimal form.
+
+
+
 ### 13.2 Example JSON Output
+
+The following illustrates the conforming encoder output. Note the
+omit-when-default behavior described in §13.1.1: constraints `c1`–`c3`
+and `c6` carry no `value`, `inferred`, or `confidence` field (all at
+defaults); `c4` emits `inferred` and `confidence` because they are
+non-default; `c5` emits `value` because it carries a real measurement.
 
 ```json
 {
@@ -2358,15 +2437,16 @@ def constraint_to_dict(c: SketchConstraint) -> dict:
      "center": [30.0, 20.0], "radius": 10.0}
   ],
   "constraints": [
-    {"id": "c1", "type": "tangent", "references": ["L0", "A1"], "value": null, "inferred": false, "confidence": 1.0},
-    {"id": "c2", "type": "tangent", "references": ["A1", "L2"], "value": null, "inferred": false, "confidence": 1.0},
-    {"id": "c3", "type": "horizontal", "references": ["L0"], "value": null, "inferred": false, "confidence": 1.0},
-    {"id": "c4", "type": "equal", "references": ["A1", "A3", "A5", "A7"], "value": null, "inferred": true, "confidence": 0.95},
-    {"id": "c5", "type": "radius", "references": ["A1"], "value": 8.0, "inferred": false, "confidence": 1.0},
+    {"id": "c1", "type": "tangent", "references": ["L0", "A1"]},
+    {"id": "c2", "type": "tangent", "references": ["A1", "L2"]},
+    {"id": "c3", "type": "horizontal", "references": ["L0"]},
+    {"id": "c4", "type": "equal", "references": ["A1", "A3", "A5", "A7"],
+     "inferred": true, "confidence": 0.95},
+    {"id": "c5", "type": "radius", "references": ["A1"], "value": 8.0},
     {"id": "c6", "type": "coincident", "references": [
       {"element": "L0", "point": "end"},
       {"element": "A1", "point": "start"}
-    ], "value": null, "inferred": false, "confidence": 1.0}
+    ]}
   ],
   "solver_status": "fully_constrained",
   "degrees_of_freedom": 0

@@ -51,11 +51,10 @@ would produce now.
 
 ## Notes on the schema
 
-- **`PointType.ON_CURVE` is unreachable.** It is defined in the enum
-  but no primitive's `get_valid_point_types()` includes it (including
-  `Spline`'s, despite the docstring suggesting otherwise). The corpus
-  intentionally does not exercise ON_CURVE because doing so produces
-  documents that fail validation. Both implementations round-trip
-  ON_CURVE through (de)serialization correctly; the C++ unit tests in
-  `cpp/tests/test_serialization.cpp` cover that path. This gap was
-  surfaced when the C++ validator was first run against the corpus.
+- **`PointType.ON_CURVE` is reserved but not currently supported by
+  any primitive** — see `SPECIFICATION.md` §3.1 ("ON_CURVE status").
+  The corpus intentionally does not exercise it: a `PointRef` with
+  `point_type=ON_CURVE` fails validation against every primitive in
+  the current schema. Round-trip through (de)serialization is
+  exercised separately by the C++ unit tests in
+  `cpp/tests/test_serialization.cpp`.

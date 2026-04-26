@@ -12,6 +12,7 @@
 #include "morphe/document.hpp"
 #include "morphe/primitives.hpp"
 #include "morphe/types.hpp"
+#include "morphe/validation.hpp"
 
 namespace morphe {
 

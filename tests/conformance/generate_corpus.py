@@ -46,7 +46,8 @@ from morphe.primitives import (  # noqa: E402
     Spline,
 )
 from morphe.serialization import sketch_to_json  # noqa: E402
-from morphe.types import Point2D as _Point2D_raw, PointRef, PointType  # noqa: E402
+from morphe.types import Point2D as _Point2D_raw  # noqa: E402
+from morphe.types import PointRef, PointType  # noqa: E402
 
 
 def Point2D(x, y) -> _Point2D_raw:  # noqa: N802 — match upstream casing
@@ -378,14 +379,14 @@ def fixture_all_constraint_types() -> SketchDocument:
     d.add_primitive(Point(position=Point2D(5, 0)))  # P0
     d.add_primitive(Point(position=Point2D(7, 0)))  # P1
 
-    P0 = PointRef("P0", PointType.CENTER)
-    P1 = PointRef("P1", PointType.CENTER)
-    L0_end = PointRef("L0", PointType.END)
-    A0_start = PointRef("A0", PointType.START)
+    p0 = PointRef("P0", PointType.CENTER)
+    p1 = PointRef("P1", PointType.CENTER)
+    l0_end = PointRef("L0", PointType.END)
+    a0_start = PointRef("A0", PointType.START)
 
     d.constraints.append(
         SketchConstraint(id="c-coincident", constraint_type=ConstraintType.COINCIDENT,
-                         references=[L0_end, A0_start])
+                         references=[l0_end, a0_start])
     )
     d.constraints.append(
         SketchConstraint(id="c-tangent", constraint_type=ConstraintType.TANGENT,
@@ -425,15 +426,15 @@ def fixture_all_constraint_types() -> SketchDocument:
     )
     d.constraints.append(
         SketchConstraint(id="c-distance", constraint_type=ConstraintType.DISTANCE,
-                         references=[P0, P1], value=2.0)
+                         references=[p0, p1], value=2.0)
     )
     d.constraints.append(
         SketchConstraint(id="c-distx", constraint_type=ConstraintType.DISTANCE_X,
-                         references=[P0, P1], value=2.0)
+                         references=[p0, p1], value=2.0)
     )
     d.constraints.append(
         SketchConstraint(id="c-disty", constraint_type=ConstraintType.DISTANCE_Y,
-                         references=[P0, P1], value=0.0)
+                         references=[p0, p1], value=0.0)
     )
     d.constraints.append(
         SketchConstraint(id="c-length", constraint_type=ConstraintType.LENGTH,
@@ -457,7 +458,7 @@ def fixture_all_constraint_types() -> SketchDocument:
     )
     d.constraints.append(
         SketchConstraint(id="c-midpoint", constraint_type=ConstraintType.MIDPOINT,
-                         references=[P0, "L0"])
+                         references=[p0, "L0"])
     )
     return d
 

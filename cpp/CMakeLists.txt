@@ -13,12 +13,22 @@ if(NOT DEFINED MORPHE_BUILD_TESTS)
     endif()
 endif()
 
-add_library(morphe INTERFACE)
-target_include_directories(morphe INTERFACE
+add_library(morphe STATIC
+    src/constraints.cpp
+)
+target_include_directories(morphe PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
 )
-target_compile_features(morphe INTERFACE cxx_std_17)
+target_compile_features(morphe PUBLIC cxx_std_17)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(morphe PRIVATE
+        -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+    )
+elseif(MSVC)
+    target_compile_options(morphe PRIVATE /W4)
+endif()
 
 add_library(morphe::morphe ALIAS morphe)
 
@@ -28,6 +38,10 @@ if(MORPHE_BUILD_TESTS)
     add_executable(morphe_tests
         tests/test_main.cpp
         tests/test_smoke.cpp
+        tests/test_types.cpp
+        tests/test_primitives.cpp
+        tests/test_constraints.cpp
+        tests/test_document.cpp
     )
     target_link_libraries(morphe_tests PRIVATE morphe)
     target_include_directories(morphe_tests PRIVATE

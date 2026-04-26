@@ -2,13 +2,16 @@
 
 // Morphe C++17 reference implementation.
 //
-// This header is the public umbrella. Subsequent phases populate it with
-// types, primitives, constraints, document, serialization, and validation.
-//
-// The implementation is standalone: it does not link against, embed, or
-// communicate with the Python `morphe` package. The two implementations
-// agree only on the JSON wire format described in SPECIFICATION.md §13
-// and in the conformance corpus under tests/conformance/.
+// Public umbrella header. The implementation is standalone: it does not link
+// against, embed, or communicate with the Python `morphe` package. The two
+// implementations agree only on the JSON wire format described in
+// SPECIFICATION.md §13 and pinned by the conformance corpus under
+// tests/conformance/.
+
+#include "morphe/constraints.hpp"
+#include "morphe/document.hpp"
+#include "morphe/primitives.hpp"
+#include "morphe/types.hpp"
 
 namespace morphe {
 

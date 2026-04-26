@@ -876,9 +876,6 @@ class FreeCADAdapter(SketchBackendAdapter):
             )
         elif 'ArcOfCircle' in geo_type or geo_type == 'Arc':
             center = geo.Center if hasattr(geo, 'Center') else geo.Location
-            # Determine CCW from angles
-            start_angle = geo.FirstParameter if hasattr(geo, 'FirstParameter') else 0
-            end_angle = geo.LastParameter if hasattr(geo, 'LastParameter') else math.pi
             # FreeCAD's ArcOfCircle parameterization is always CCW from
             # FirstParameter to LastParameter
             ccw = True

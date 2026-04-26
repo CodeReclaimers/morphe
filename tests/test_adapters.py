@@ -1404,10 +1404,14 @@ class TestGeoToPrimType:
         mock_geo.__class__.__name__ = 'BSplineCurve'
         assert adapter._geo_to_prim_type(mock_geo) == Spline
 
-    def test_unknown_defaults_to_line(self, adapter):
+    def test_unknown_raises(self, adapter):
+        # Behavior changed by issue #17 ("Fix FreeCAD _geo_to_prim_type silently
+        # defaulting to Line"): unrecognized geometry types now raise
+        # ValueError instead of silently being treated as a Line.
         mock_geo = MagicMock()
         mock_geo.__class__.__name__ = 'Unknown'
-        assert adapter._geo_to_prim_type(mock_geo) == Line
+        with pytest.raises(ValueError, match="Unrecognized FreeCAD geometry type"):
+            adapter._geo_to_prim_type(mock_geo)
 
 
 class TestLoadSketch:

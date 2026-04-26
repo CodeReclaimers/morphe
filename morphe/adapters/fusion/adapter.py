@@ -1347,14 +1347,8 @@ class FusionAdapter(SketchBackendAdapter):
             start = self._point3d_to_point2d(arc.startSketchPoint.geometry)
             end = self._point3d_to_point2d(arc.endSketchPoint.geometry)
 
-            # Determine CCW from the arc geometry
-            # Fusion arcs have geometry.startAngle and geometry.endAngle
-            geom = arc.geometry
-            start_angle = geom.startAngle
-            end_angle = geom.endAngle
-
             # Fusion 360's SketchArc geometry sweep is always CCW from
-            # startAngle to endAngle
+            # geometry.startAngle to geometry.endAngle
             ccw = True
 
             canonical_arc = Arc(

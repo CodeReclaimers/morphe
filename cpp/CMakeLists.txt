@@ -15,6 +15,7 @@ endif()
 
 add_library(morphe STATIC
     src/constraints.cpp
+    src/serialization.cpp
 )
 target_include_directories(morphe PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -42,6 +43,7 @@ if(MORPHE_BUILD_TESTS)
         tests/test_primitives.cpp
         tests/test_constraints.cpp
         tests/test_document.cpp
+        tests/test_serialization.cpp
     )
     target_link_libraries(morphe_tests PRIVATE morphe)
     target_include_directories(morphe_tests PRIVATE

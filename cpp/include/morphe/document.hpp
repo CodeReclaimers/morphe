@@ -69,20 +69,27 @@ public:
     }
 
     // Append with a caller-supplied ID (e.g., during deserialization). Throws
-    // if the ID already exists. Updates the prefix counter so subsequent
+    // std::invalid_argument if the ID already exists or if its prefix does
+    // not match the primitive type. Updates the prefix counter so subsequent
     // auto-assigns do not collide.
     std::string add_primitive_with_id(Primitive p, std::string id) {
         if (find_primitive(id) != nullptr) {
             throw std::invalid_argument("element ID already exists: " + id);
         }
-        const char prefix = id.empty() ? '\0' : id.front();
+        const char expected_prefix = id_prefix(p);
+        if (!id.empty() && id.front() != expected_prefix) {
+            throw std::invalid_argument(
+                std::string{"Element ID '"} + id + "' has prefix '" + id.front() +
+                "' but expected '" + expected_prefix + "' for " +
+                std::string{type_tag(p)});
+        }
         meta_of(p).id = id;
         primitives.push_back(std::move(p));
 
         if (id.size() >= 2) {
             try {
                 const int idx = std::stoi(id.substr(1));
-                int& counter = next_index_[prefix];
+                int& counter = next_index_[expected_prefix];
                 if (idx + 1 > counter) counter = idx + 1;
             } catch (const std::exception&) {
                 // Non-numeric suffix: skip counter update silently, matching

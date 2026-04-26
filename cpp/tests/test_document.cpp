@@ -67,6 +67,27 @@ TEST_CASE("SketchDocument: duplicate IDs are rejected") {
     CHECK_THROWS_AS(d.add_primitive_with_id(m::Line{}, "L0"), std::invalid_argument);
 }
 
+TEST_CASE("SketchDocument: ID prefix must match primitive type") {
+    m::SketchDocument d;
+    // Line takes prefix 'L'; passing "A0" must fail.
+    CHECK_THROWS_AS(d.add_primitive_with_id(m::Line{}, "A0"), std::invalid_argument);
+    // Mismatch on every primitive type
+    CHECK_THROWS_AS(d.add_primitive_with_id(m::Arc{},          "L0"), std::invalid_argument);
+    CHECK_THROWS_AS(d.add_primitive_with_id(m::Circle{},       "L0"), std::invalid_argument);
+    CHECK_THROWS_AS(d.add_primitive_with_id(m::Point{},        "L0"), std::invalid_argument);
+    CHECK_THROWS_AS(d.add_primitive_with_id(m::Spline{},       "L0"), std::invalid_argument);
+    CHECK_THROWS_AS(d.add_primitive_with_id(m::Ellipse{},      "L0"), std::invalid_argument);
+    CHECK_THROWS_AS(d.add_primitive_with_id(m::EllipticalArc{},"E0"), std::invalid_argument);  // expects 'e', not 'E'
+    // Correct prefixes succeed
+    CHECK_NOTHROW(d.add_primitive_with_id(m::Line{},          "L0"));
+    CHECK_NOTHROW(d.add_primitive_with_id(m::Arc{},           "A0"));
+    CHECK_NOTHROW(d.add_primitive_with_id(m::Circle{},        "C0"));
+    CHECK_NOTHROW(d.add_primitive_with_id(m::Point{},         "P0"));
+    CHECK_NOTHROW(d.add_primitive_with_id(m::Spline{},        "S0"));
+    CHECK_NOTHROW(d.add_primitive_with_id(m::Ellipse{},       "E0"));
+    CHECK_NOTHROW(d.add_primitive_with_id(m::EllipticalArc{}, "e0"));
+}
+
 TEST_CASE("SketchDocument: find_primitive returns nullptr for missing IDs") {
     m::SketchDocument d;
     d.add_primitive(m::Line{});

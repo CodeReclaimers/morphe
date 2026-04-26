@@ -297,22 +297,53 @@ TEST_CASE("PointRef: parameter and index emitted only when set") {
     CHECK(!r3.contains("index"));
 }
 
-TEST_CASE("Deserializer: missing point components default to 0.0") {
+TEST_CASE("Deserializer: truncated point array throws") {
     const std::string js = R"({
         "name": "partial",
         "primitives": [{"id":"L0","type":"line","construction":false,
-                        "start":[1.0],"end":[]}],
+                        "start":[1.0],"end":[2.0,3.0]}],
         "constraints": [],
         "solver_status": "dirty",
         "degrees_of_freedom": -1
     })";
-    const auto d = m::from_json(js);
-    REQUIRE(d.primitives.size() == 1);
-    const auto& l = std::get<m::Line>(d.primitives[0]);
-    CHECK(l.start.x == 1.0);
-    CHECK(l.start.y == 0.0);
-    CHECK(l.end.x == 0.0);
-    CHECK(l.end.y == 0.0);
+    CHECK_THROWS_AS(m::from_json(js), std::invalid_argument);
+}
+
+TEST_CASE("Deserializer: missing required geometry field throws") {
+    auto missing = [](std::string_view body) {
+        return std::string(R"({"name":"x","primitives":[)") + std::string(body) +
+               R"(],"constraints":[],"solver_status":"dirty","degrees_of_freedom":-1})";
+    };
+
+    // Line without "end"
+    CHECK_THROWS_AS(m::from_json(missing(
+        R"({"id":"L0","type":"line","construction":false,"start":[0,0]})")),
+        std::invalid_argument);
+    // Arc without "end_point"
+    CHECK_THROWS_AS(m::from_json(missing(
+        R"({"id":"A0","type":"arc","construction":false,
+            "center":[0,0],"start_point":[1,0]})")),
+        std::invalid_argument);
+    // Circle without "center"
+    CHECK_THROWS_AS(m::from_json(missing(
+        R"({"id":"C0","type":"circle","construction":false,"radius":1.0})")),
+        std::invalid_argument);
+    // Point without "position"
+    CHECK_THROWS_AS(m::from_json(missing(
+        R"({"id":"P0","type":"point","construction":false})")),
+        std::invalid_argument);
+    // Spline without "control_points"
+    CHECK_THROWS_AS(m::from_json(missing(
+        R"({"id":"S0","type":"spline","construction":false,"knots":[]})")),
+        std::invalid_argument);
+    // Ellipse without "center"
+    CHECK_THROWS_AS(m::from_json(missing(
+        R"({"id":"E0","type":"ellipse","construction":false,"major_radius":1.0})")),
+        std::invalid_argument);
+    // EllipticalArc without "center"
+    CHECK_THROWS_AS(m::from_json(missing(
+        R"({"id":"e0","type":"ellipticalarc","construction":false})")),
+        std::invalid_argument);
 }
 
 TEST_CASE("Deserializer: unknown primitive type throws") {

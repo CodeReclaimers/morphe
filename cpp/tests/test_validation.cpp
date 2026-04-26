@@ -230,16 +230,95 @@ TEST_CASE("Confidence outside [0,1] is a warning") {
     CHECK(r.is_valid());  // warning, not error
 }
 
-TEST_CASE("Ellipse and EllipticalArc are not validated (matches Python)") {
+TEST_CASE("Ellipse: valid default passes") {
+    m::SketchDocument d;
+    d.add_primitive(m::Ellipse{});
+    const auto r = m::validate(d);
+    CHECK(r.is_valid());
+}
+
+TEST_CASE("Ellipse: non-positive radii are errors") {
+    m::SketchDocument d;
+    m::Ellipse e1; e1.major_radius = 0.0;
+    d.add_primitive(e1);
+    m::Ellipse e2; e2.major_radius = 1.0; e2.minor_radius = -0.5;
+    d.add_primitive(e2);
+    const auto r = m::validate(d);
+    CHECK(has_code(r, "ELLIPSE_INVALID_MAJOR_RADIUS"));
+    CHECK(has_code(r, "ELLIPSE_INVALID_MINOR_RADIUS"));
+}
+
+TEST_CASE("Ellipse: major < minor is an error") {
     m::SketchDocument d;
     m::Ellipse e;
-    e.major_radius = -1.0;  // would be invalid if we cared
+    e.major_radius = 1.0;
+    e.minor_radius = 2.0;  // minor > major
     d.add_primitive(e);
-    m::EllipticalArc ea;
-    ea.major_radius = 0.0;
-    d.add_primitive(ea);
     const auto r = m::validate(d);
-    CHECK(r.is_valid());  // no primitive validation for these types
+    CHECK(has_code(r, "ELLIPSE_MAJOR_LESS_THAN_MINOR"));
+}
+
+TEST_CASE("Ellipse: non-finite center is an error") {
+    m::SketchDocument d;
+    m::Ellipse e;
+    e.center = {std::nan(""), 0.0};
+    d.add_primitive(e);
+    const auto r = m::validate(d);
+    CHECK(has_code(r, "ELLIPSE_INVALID_COORDS"));
+}
+
+TEST_CASE("EllipticalArc: valid default passes") {
+    m::SketchDocument d;
+    d.add_primitive(m::EllipticalArc{});  // default end_param = pi/2 != start_param = 0
+    const auto r = m::validate(d);
+    CHECK(r.is_valid());
+}
+
+TEST_CASE("EllipticalArc: non-positive radii are errors") {
+    m::SketchDocument d;
+    m::EllipticalArc a;
+    a.major_radius = -1.0;
+    a.minor_radius = 0.0;
+    d.add_primitive(a);
+    const auto r = m::validate(d);
+    CHECK(has_code(r, "ELLIPTICAL_ARC_INVALID_MAJOR_RADIUS"));
+    CHECK(has_code(r, "ELLIPTICAL_ARC_INVALID_MINOR_RADIUS"));
+}
+
+TEST_CASE("EllipticalArc: major < minor is an error") {
+    m::SketchDocument d;
+    m::EllipticalArc a;
+    a.major_radius = 1.0;
+    a.minor_radius = 2.0;
+    d.add_primitive(a);
+    const auto r = m::validate(d);
+    CHECK(has_code(r, "ELLIPTICAL_ARC_MAJOR_LESS_THAN_MINOR"));
+}
+
+TEST_CASE("EllipticalArc: non-finite parametric angles are errors") {
+    m::SketchDocument d;
+    m::EllipticalArc a;
+    a.start_param = std::nan("");
+    d.add_primitive(a);
+    const auto r = m::validate(d);
+    CHECK(has_code(r, "ELLIPTICAL_ARC_INVALID_START_PARAM"));
+
+    m::SketchDocument d2;
+    m::EllipticalArc b;
+    b.end_param = std::nan("");
+    d2.add_primitive(b);
+    const auto r2 = m::validate(d2);
+    CHECK(has_code(r2, "ELLIPTICAL_ARC_INVALID_END_PARAM"));
+}
+
+TEST_CASE("EllipticalArc: zero sweep (start_param == end_param) is an error") {
+    m::SketchDocument d;
+    m::EllipticalArc a;
+    a.start_param = 0.5;
+    a.end_param = 0.5;
+    d.add_primitive(a);
+    const auto r = m::validate(d);
+    CHECK(has_code(r, "ELLIPTICAL_ARC_ZERO_SWEEP"));
 }
 
 // ---------- constraint validation ----------

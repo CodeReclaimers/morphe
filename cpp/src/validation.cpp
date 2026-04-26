@@ -153,6 +153,65 @@ void validate_spline(const Spline& s, ValidationResult& r, double /*tol*/) {
     }
 }
 
+void validate_ellipse(const Ellipse& e, ValidationResult& r) {
+    if (!is_finite(e.center.x) || !is_finite(e.center.y)) {
+        r.add_error("Ellipse has non-finite center coordinates",
+                    "ELLIPSE_INVALID_COORDS", e.meta.id);
+        return;
+    }
+    if (e.major_radius <= 0.0) {
+        r.add_error(concat("Ellipse major_radius must be positive (got ",
+                           e.major_radius, ")"),
+                    "ELLIPSE_INVALID_MAJOR_RADIUS", e.meta.id);
+    }
+    if (e.minor_radius <= 0.0) {
+        r.add_error(concat("Ellipse minor_radius must be positive (got ",
+                           e.minor_radius, ")"),
+                    "ELLIPSE_INVALID_MINOR_RADIUS", e.meta.id);
+    }
+    if (e.major_radius < e.minor_radius) {
+        r.add_error(concat("Ellipse major_radius (", e.major_radius,
+                           ") must be >= minor_radius (", e.minor_radius, ")"),
+                    "ELLIPSE_MAJOR_LESS_THAN_MINOR", e.meta.id);
+    }
+}
+
+void validate_elliptical_arc(const EllipticalArc& a, ValidationResult& r) {
+    if (!is_finite(a.center.x) || !is_finite(a.center.y)) {
+        r.add_error("EllipticalArc has non-finite center coordinates",
+                    "ELLIPTICAL_ARC_INVALID_COORDS", a.meta.id);
+        return;
+    }
+    if (a.major_radius <= 0.0) {
+        r.add_error(concat("EllipticalArc major_radius must be positive (got ",
+                           a.major_radius, ")"),
+                    "ELLIPTICAL_ARC_INVALID_MAJOR_RADIUS", a.meta.id);
+    }
+    if (a.minor_radius <= 0.0) {
+        r.add_error(concat("EllipticalArc minor_radius must be positive (got ",
+                           a.minor_radius, ")"),
+                    "ELLIPTICAL_ARC_INVALID_MINOR_RADIUS", a.meta.id);
+    }
+    if (a.major_radius < a.minor_radius) {
+        r.add_error(concat("EllipticalArc major_radius (", a.major_radius,
+                           ") must be >= minor_radius (", a.minor_radius, ")"),
+                    "ELLIPTICAL_ARC_MAJOR_LESS_THAN_MINOR", a.meta.id);
+    }
+    if (!is_finite(a.start_param)) {
+        r.add_error("EllipticalArc has non-finite start_param",
+                    "ELLIPTICAL_ARC_INVALID_START_PARAM", a.meta.id);
+    }
+    if (!is_finite(a.end_param)) {
+        r.add_error("EllipticalArc has non-finite end_param",
+                    "ELLIPTICAL_ARC_INVALID_END_PARAM", a.meta.id);
+    }
+    if (is_finite(a.start_param) && is_finite(a.end_param) &&
+        a.start_param == a.end_param) {
+        r.add_error("EllipticalArc start_param and end_param must differ",
+                    "ELLIPTICAL_ARC_ZERO_SWEEP", a.meta.id);
+    }
+}
+
 void validate_primitive(const Primitive& p, ValidationResult& r, double tol) {
     validate_meta(meta_of(p), r);
     struct V {
@@ -163,8 +222,8 @@ void validate_primitive(const Primitive& p, ValidationResult& r, double tol) {
         void operator()(const Circle& x)        const { validate_circle(x, r, tol); }
         void operator()(const Point& x)         const { validate_point(x, r); }
         void operator()(const Spline& x)        const { validate_spline(x, r, tol); }
-        void operator()(const Ellipse&)         const { /* no validation, mirroring Python */ }
-        void operator()(const EllipticalArc&)   const { /* no validation, mirroring Python */ }
+        void operator()(const Ellipse& x)       const { validate_ellipse(x, r); }
+        void operator()(const EllipticalArc& x) const { validate_elliptical_arc(x, r); }
     };
     std::visit(V{r, tol}, p);
 }

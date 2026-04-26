@@ -95,9 +95,6 @@ public:
 // Horizontal constraint on a Circle currently passes). That gap is shared
 // with the Python implementation by design — fixing it would be a spec
 // change, not an implementation change.
-//
-// Ellipse and EllipticalArc have no primitive-level validation, again
-// matching the Python behavior.
 ValidationResult validate(const SketchDocument& doc, double tolerance = default_tolerance);
 
 }  // namespace morphe

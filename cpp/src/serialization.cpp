@@ -25,13 +25,21 @@ ojson point2d_to_array(const Point2D& p) {
 }
 
 Point2D parse_point(const ijson& a) {
-    // Mirrors morphe.serialization._parse_point: tolerate missing components,
-    // default to 0.0.
-    if (!a.is_array()) return Point2D{};
-    Point2D out{};
-    if (a.size() >= 1 && a[0].is_number()) out.x = a[0].get<double>();
-    if (a.size() >= 2 && a[1].is_number()) out.y = a[1].get<double>();
-    return out;
+    // Mirrors morphe.serialization._parse_point: requires a 2-element array;
+    // raises on truncated or non-array data.
+    if (!a.is_array() || a.size() < 2) {
+        throw std::invalid_argument("Expected [x, y] array, got " + a.dump());
+    }
+    return Point2D{a[0].get<double>(), a[1].get<double>()};
+}
+
+void require_field(const ijson& j, const std::string& field,
+                   std::string_view kind, const std::string& id_val) {
+    if (!j.contains(field)) {
+        throw std::invalid_argument(
+            std::string{kind} + " primitive missing required field '" + field +
+            "': " + id_val);
+    }
 }
 
 ojson point_ref_to_json(const PointRef& r) {
@@ -135,44 +143,51 @@ void read_meta(PrimitiveMeta& meta, const ijson& j) {
 
 Primitive primitive_from_json(const ijson& j) {
     const auto type_str = j.value("type", std::string{});
+    const auto id_val   = j.value("id", std::string{});
 
     if (type_str == "line") {
         Line out;
         read_meta(out.meta, j);
-        if (j.contains("start")) out.start = parse_point(j.at("start"));
-        if (j.contains("end"))   out.end   = parse_point(j.at("end"));
+        require_field(j, "start", "Line", id_val);
+        require_field(j, "end",   "Line", id_val);
+        out.start = parse_point(j.at("start"));
+        out.end   = parse_point(j.at("end"));
         return out;
     }
     if (type_str == "arc") {
         Arc out;
         read_meta(out.meta, j);
-        if (j.contains("center"))      out.center      = parse_point(j.at("center"));
-        if (j.contains("start_point")) out.start_point = parse_point(j.at("start_point"));
-        if (j.contains("end_point"))   out.end_point   = parse_point(j.at("end_point"));
-        if (j.contains("ccw"))         out.ccw         = j.at("ccw").get<bool>();
+        require_field(j, "center",      "Arc", id_val);
+        require_field(j, "start_point", "Arc", id_val);
+        require_field(j, "end_point",   "Arc", id_val);
+        out.center      = parse_point(j.at("center"));
+        out.start_point = parse_point(j.at("start_point"));
+        out.end_point   = parse_point(j.at("end_point"));
+        if (j.contains("ccw")) out.ccw = j.at("ccw").get<bool>();
         return out;
     }
     if (type_str == "circle") {
         Circle out;
         read_meta(out.meta, j);
-        if (j.contains("center")) out.center = parse_point(j.at("center"));
+        require_field(j, "center", "Circle", id_val);
+        out.center = parse_point(j.at("center"));
         if (j.contains("radius")) out.radius = j.at("radius").get<double>();
         return out;
     }
     if (type_str == "point") {
         Point out;
         read_meta(out.meta, j);
-        if (j.contains("position")) out.position = parse_point(j.at("position"));
+        require_field(j, "position", "Point", id_val);
+        out.position = parse_point(j.at("position"));
         return out;
     }
     if (type_str == "spline") {
         Spline out;
         read_meta(out.meta, j);
+        require_field(j, "control_points", "Spline", id_val);
         if (j.contains("degree")) out.degree = j.at("degree").get<int>();
-        if (j.contains("control_points")) {
-            for (const auto& cp : j.at("control_points")) {
-                out.control_points.push_back(parse_point(cp));
-            }
+        for (const auto& cp : j.at("control_points")) {
+            out.control_points.push_back(parse_point(cp));
         }
         if (j.contains("knots")) {
             for (const auto& k : j.at("knots")) {
@@ -191,7 +206,8 @@ Primitive primitive_from_json(const ijson& j) {
     if (type_str == "ellipse") {
         Ellipse out;
         read_meta(out.meta, j);
-        if (j.contains("center"))       out.center       = parse_point(j.at("center"));
+        require_field(j, "center", "Ellipse", id_val);
+        out.center = parse_point(j.at("center"));
         if (j.contains("major_radius")) out.major_radius = j.at("major_radius").get<double>();
         if (j.contains("minor_radius")) out.minor_radius = j.at("minor_radius").get<double>();
         if (j.contains("rotation"))     out.rotation     = j.at("rotation").get<double>();
@@ -200,7 +216,8 @@ Primitive primitive_from_json(const ijson& j) {
     if (type_str == "ellipticalarc") {
         EllipticalArc out;
         read_meta(out.meta, j);
-        if (j.contains("center"))       out.center       = parse_point(j.at("center"));
+        require_field(j, "center", "EllipticalArc", id_val);
+        out.center = parse_point(j.at("center"));
         if (j.contains("major_radius")) out.major_radius = j.at("major_radius").get<double>();
         if (j.contains("minor_radius")) out.minor_radius = j.at("minor_radius").get<double>();
         if (j.contains("rotation"))     out.rotation     = j.at("rotation").get<double>();

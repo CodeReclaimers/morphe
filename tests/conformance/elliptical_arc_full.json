@@ -1,0 +1,23 @@
+{
+  "name": "EllipticalArcFull",
+  "primitives": [
+    {
+      "id": "e0",
+      "type": "ellipticalarc",
+      "construction": false,
+      "center": [
+        2.5,
+        4.0
+      ],
+      "major_radius": 5.0,
+      "minor_radius": 2.0,
+      "rotation": 0.5235987755982988,
+      "start_param": 0.25,
+      "end_param": 2.5,
+      "ccw": false
+    }
+  ],
+  "constraints": [],
+  "solver_status": "dirty",
+  "degrees_of_freedom": -1
+}

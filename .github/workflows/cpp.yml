@@ -1,0 +1,53 @@
+name: C++ Reference Implementation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # On Linux test both gcc and clang; elsewhere use the platform default.
+        compiler:
+          - { name: "default" }
+        include:
+          - os: ubuntu-latest
+            compiler: { name: "gcc",   cc: "gcc-13",   cxx: "g++-13" }
+          - os: ubuntu-latest
+            compiler: { name: "clang", cc: "clang-18", cxx: "clang++-18" }
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (for the conformance generator)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Morphe Python package (editable, for the corpus generator)
+        run: pip install -e .
+
+      - name: Verify conformance corpus is in sync
+        run: python tests/conformance/generate_corpus.py --check
+
+      - name: Run Python conformance pin
+        run: pip install pytest && pytest tests/test_conformance_corpus.py -v
+
+      - name: Configure CMake
+        env:
+          CC:  ${{ matrix.compiler.cc }}
+          CXX: ${{ matrix.compiler.cxx }}
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build cpp/build --config Release
+
+      - name: Run C++ tests
+        run: ctest --test-dir cpp/build --output-on-failure -C Release

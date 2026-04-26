@@ -1,0 +1,275 @@
+{
+  "name": "AllConstraintTypes",
+  "primitives": [
+    {
+      "id": "L0",
+      "type": "line",
+      "construction": false,
+      "start": [
+        0.0,
+        0.0
+      ],
+      "end": [
+        10.0,
+        0.0
+      ]
+    },
+    {
+      "id": "L1",
+      "type": "line",
+      "construction": false,
+      "start": [
+        0.0,
+        5.0
+      ],
+      "end": [
+        10.0,
+        5.0
+      ]
+    },
+    {
+      "id": "L2",
+      "type": "line",
+      "construction": false,
+      "start": [
+        2.0,
+        -2.0
+      ],
+      "end": [
+        2.0,
+        7.0
+      ]
+    },
+    {
+      "id": "A0",
+      "type": "arc",
+      "construction": false,
+      "center": [
+        10.0,
+        5.0
+      ],
+      "start_point": [
+        10.0,
+        0.0
+      ],
+      "end_point": [
+        15.0,
+        5.0
+      ],
+      "ccw": true
+    },
+    {
+      "id": "C0",
+      "type": "circle",
+      "construction": false,
+      "center": [
+        30.0,
+        0.0
+      ],
+      "radius": 4.0
+    },
+    {
+      "id": "P0",
+      "type": "point",
+      "construction": false,
+      "position": [
+        5.0,
+        0.0
+      ]
+    },
+    {
+      "id": "P1",
+      "type": "point",
+      "construction": false,
+      "position": [
+        7.0,
+        0.0
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "id": "c-coincident",
+      "type": "coincident",
+      "references": [
+        {
+          "element": "L0",
+          "point": "end"
+        },
+        {
+          "element": "A0",
+          "point": "start"
+        }
+      ]
+    },
+    {
+      "id": "c-tangent",
+      "type": "tangent",
+      "references": [
+        "L0",
+        "A0"
+      ]
+    },
+    {
+      "id": "c-perp",
+      "type": "perpendicular",
+      "references": [
+        "L0",
+        "L2"
+      ]
+    },
+    {
+      "id": "c-parallel",
+      "type": "parallel",
+      "references": [
+        "L0",
+        "L1"
+      ]
+    },
+    {
+      "id": "c-concentric",
+      "type": "concentric",
+      "references": [
+        "A0",
+        "C0"
+      ]
+    },
+    {
+      "id": "c-equal",
+      "type": "equal",
+      "references": [
+        "L0",
+        "L1"
+      ]
+    },
+    {
+      "id": "c-collinear",
+      "type": "collinear",
+      "references": [
+        "L0",
+        "L1"
+      ]
+    },
+    {
+      "id": "c-horizontal",
+      "type": "horizontal",
+      "references": [
+        "L0"
+      ]
+    },
+    {
+      "id": "c-vertical",
+      "type": "vertical",
+      "references": [
+        "L2"
+      ]
+    },
+    {
+      "id": "c-fixed",
+      "type": "fixed",
+      "references": [
+        "P0"
+      ]
+    },
+    {
+      "id": "c-distance",
+      "type": "distance",
+      "references": [
+        {
+          "element": "P0",
+          "point": "center"
+        },
+        {
+          "element": "P1",
+          "point": "center"
+        }
+      ],
+      "value": 2.0
+    },
+    {
+      "id": "c-distx",
+      "type": "distance_x",
+      "references": [
+        {
+          "element": "P0",
+          "point": "center"
+        },
+        {
+          "element": "P1",
+          "point": "center"
+        }
+      ],
+      "value": 2.0
+    },
+    {
+      "id": "c-disty",
+      "type": "distance_y",
+      "references": [
+        {
+          "element": "P0",
+          "point": "center"
+        },
+        {
+          "element": "P1",
+          "point": "center"
+        }
+      ],
+      "value": 0.0
+    },
+    {
+      "id": "c-length",
+      "type": "length",
+      "references": [
+        "L0"
+      ],
+      "value": 10.0
+    },
+    {
+      "id": "c-radius",
+      "type": "radius",
+      "references": [
+        "C0"
+      ],
+      "value": 4.0
+    },
+    {
+      "id": "c-diameter",
+      "type": "diameter",
+      "references": [
+        "C0"
+      ],
+      "value": 8.0
+    },
+    {
+      "id": "c-angle",
+      "type": "angle",
+      "references": [
+        "L0",
+        "L2"
+      ],
+      "value": 90.0
+    },
+    {
+      "id": "c-symmetric",
+      "type": "symmetric",
+      "references": [
+        "L0",
+        "L1",
+        "L2"
+      ]
+    },
+    {
+      "id": "c-midpoint",
+      "type": "midpoint_constraint",
+      "references": [
+        {
+          "element": "P0",
+          "point": "center"
+        },
+        "L0"
+      ]
+    }
+  ],
+  "solver_status": "dirty",
+  "degrees_of_freedom": -1
+}

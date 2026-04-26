@@ -1,0 +1,50 @@
+{
+  "name": "SplineWithWeights",
+  "primitives": [
+    {
+      "id": "S0",
+      "type": "spline",
+      "construction": false,
+      "degree": 3,
+      "control_points": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.5
+        ],
+        [
+          3.0,
+          1.5
+        ]
+      ],
+      "knots": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "periodic": false,
+      "is_fit_spline": false,
+      "weights": [
+        1.0,
+        2.0,
+        1.5,
+        1.0
+      ]
+    }
+  ],
+  "constraints": [],
+  "solver_status": "dirty",
+  "degrees_of_freedom": -1
+}

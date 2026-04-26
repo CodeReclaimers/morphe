@@ -46,10 +46,17 @@ if(MORPHE_BUILD_TESTS)
         tests/test_document.cpp
         tests/test_serialization.cpp
         tests/test_validation.cpp
+        tests/test_conformance.cpp
     )
     target_link_libraries(morphe_tests PRIVATE morphe)
     target_include_directories(morphe_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+    )
+
+    # Inject the conformance corpus path. CMake resolves this at configure
+    # time; the C++ test reads MORPHE_CORPUS_DIR at compile time.
+    target_compile_definitions(morphe_tests PRIVATE
+        MORPHE_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../tests/conformance"
     )
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

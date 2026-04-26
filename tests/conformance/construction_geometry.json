@@ -1,0 +1,52 @@
+{
+  "name": "ConstructionGeometry",
+  "primitives": [
+    {
+      "id": "L0",
+      "type": "line",
+      "construction": false,
+      "start": [
+        0.0,
+        0.0
+      ],
+      "end": [
+        10.0,
+        0.0
+      ]
+    },
+    {
+      "id": "L1",
+      "type": "line",
+      "construction": true,
+      "start": [
+        5.0,
+        -1.0
+      ],
+      "end": [
+        5.0,
+        11.0
+      ]
+    },
+    {
+      "id": "A0",
+      "type": "arc",
+      "construction": true,
+      "center": [
+        5.0,
+        5.0
+      ],
+      "start_point": [
+        5.0,
+        0.0
+      ],
+      "end_point": [
+        10.0,
+        5.0
+      ],
+      "ccw": true
+    }
+  ],
+  "constraints": [],
+  "solver_status": "dirty",
+  "degrees_of_freedom": -1
+}

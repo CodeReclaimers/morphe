@@ -1,0 +1,166 @@
+{
+  "name": "PointRefsFull",
+  "primitives": [
+    {
+      "id": "L0",
+      "type": "line",
+      "construction": false,
+      "start": [
+        0.0,
+        0.0
+      ],
+      "end": [
+        10.0,
+        0.0
+      ]
+    },
+    {
+      "id": "A0",
+      "type": "arc",
+      "construction": false,
+      "center": [
+        10.0,
+        5.0
+      ],
+      "start_point": [
+        10.0,
+        0.0
+      ],
+      "end_point": [
+        15.0,
+        5.0
+      ],
+      "ccw": true
+    },
+    {
+      "id": "C0",
+      "type": "circle",
+      "construction": false,
+      "center": [
+        20.0,
+        5.0
+      ],
+      "radius": 2.0
+    },
+    {
+      "id": "S0",
+      "type": "spline",
+      "construction": false,
+      "degree": 3,
+      "control_points": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.5
+        ],
+        [
+          3.0,
+          1.5
+        ]
+      ],
+      "knots": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "periodic": false,
+      "is_fit_spline": false
+    },
+    {
+      "id": "P0",
+      "type": "point",
+      "construction": false,
+      "position": [
+        50.0,
+        50.0
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "id": "c-start",
+      "type": "coincident",
+      "references": [
+        {
+          "element": "L0",
+          "point": "start"
+        },
+        {
+          "element": "P0",
+          "point": "center"
+        }
+      ]
+    },
+    {
+      "id": "c-end",
+      "type": "coincident",
+      "references": [
+        {
+          "element": "L0",
+          "point": "end"
+        },
+        {
+          "element": "P0",
+          "point": "center"
+        }
+      ]
+    },
+    {
+      "id": "c-center",
+      "type": "coincident",
+      "references": [
+        {
+          "element": "A0",
+          "point": "center"
+        },
+        {
+          "element": "P0",
+          "point": "center"
+        }
+      ]
+    },
+    {
+      "id": "c-midpoint",
+      "type": "coincident",
+      "references": [
+        {
+          "element": "L0",
+          "point": "midpoint"
+        },
+        {
+          "element": "P0",
+          "point": "center"
+        }
+      ]
+    },
+    {
+      "id": "c-control",
+      "type": "coincident",
+      "references": [
+        {
+          "element": "S0",
+          "point": "control",
+          "index": 2
+        },
+        {
+          "element": "P0",
+          "point": "center"
+        }
+      ]
+    }
+  ],
+  "solver_status": "dirty",
+  "degrees_of_freedom": -1
+}

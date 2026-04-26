@@ -1,0 +1,121 @@
+{
+  "name": "AllPrimitives",
+  "primitives": [
+    {
+      "id": "L0",
+      "type": "line",
+      "construction": false,
+      "start": [
+        0.0,
+        0.0
+      ],
+      "end": [
+        10.0,
+        0.0
+      ]
+    },
+    {
+      "id": "A0",
+      "type": "arc",
+      "construction": false,
+      "center": [
+        10.0,
+        5.0
+      ],
+      "start_point": [
+        10.0,
+        0.0
+      ],
+      "end_point": [
+        15.0,
+        5.0
+      ],
+      "ccw": true
+    },
+    {
+      "id": "C0",
+      "type": "circle",
+      "construction": false,
+      "center": [
+        0.0,
+        0.0
+      ],
+      "radius": 5.0
+    },
+    {
+      "id": "P0",
+      "type": "point",
+      "construction": false,
+      "position": [
+        1.5,
+        2.5
+      ]
+    },
+    {
+      "id": "S0",
+      "type": "spline",
+      "construction": false,
+      "degree": 3,
+      "control_points": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          2.0,
+          0.5
+        ],
+        [
+          3.0,
+          1.5
+        ]
+      ],
+      "knots": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "periodic": false,
+      "is_fit_spline": false
+    },
+    {
+      "id": "E0",
+      "type": "ellipse",
+      "construction": false,
+      "center": [
+        5.0,
+        5.0
+      ],
+      "major_radius": 3.0,
+      "minor_radius": 1.5,
+      "rotation": 0.5
+    },
+    {
+      "id": "e0",
+      "type": "ellipticalarc",
+      "construction": false,
+      "center": [
+        0.0,
+        0.0
+      ],
+      "major_radius": 2.0,
+      "minor_radius": 1.0,
+      "rotation": 0.0,
+      "start_param": 0.0,
+      "end_param": 1.5707963267948966,
+      "ccw": true
+    }
+  ],
+  "constraints": [],
+  "solver_status": "dirty",
+  "degrees_of_freedom": -1
+}

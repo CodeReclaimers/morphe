@@ -1,0 +1,59 @@
+{
+  "name": "InferredConstraints",
+  "primitives": [
+    {
+      "id": "L0",
+      "type": "line",
+      "construction": false,
+      "start": [
+        0.0,
+        0.0
+      ],
+      "end": [
+        10.0,
+        0.0
+      ]
+    },
+    {
+      "id": "L1",
+      "type": "line",
+      "construction": false,
+      "start": [
+        0.0,
+        5.0
+      ],
+      "end": [
+        10.0,
+        5.0
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "id": "c-ai-1",
+      "type": "parallel",
+      "references": [
+        "L0",
+        "L1"
+      ],
+      "inferred": true,
+      "confidence": 0.85,
+      "source": "ai",
+      "status": "satisfied"
+    },
+    {
+      "id": "c-tan",
+      "type": "horizontal",
+      "references": [
+        "L0"
+      ],
+      "connection_point": {
+        "element": "L0",
+        "point": "end"
+      },
+      "source": "user"
+    }
+  ],
+  "solver_status": "dirty",
+  "degrees_of_freedom": -1
+}

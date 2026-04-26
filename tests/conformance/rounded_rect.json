@@ -1,0 +1,108 @@
+{
+  "name": "RoundedRect",
+  "primitives": [
+    {
+      "id": "L0",
+      "type": "line",
+      "construction": false,
+      "start": [
+        8.0,
+        0.0
+      ],
+      "end": [
+        52.0,
+        0.0
+      ]
+    },
+    {
+      "id": "A0",
+      "type": "arc",
+      "construction": false,
+      "center": [
+        52.0,
+        8.0
+      ],
+      "start_point": [
+        52.0,
+        0.0
+      ],
+      "end_point": [
+        60.0,
+        8.0
+      ],
+      "ccw": true
+    },
+    {
+      "id": "L1",
+      "type": "line",
+      "construction": false,
+      "start": [
+        60.0,
+        8.0
+      ],
+      "end": [
+        60.0,
+        32.0
+      ]
+    },
+    {
+      "id": "C0",
+      "type": "circle",
+      "construction": false,
+      "center": [
+        30.0,
+        20.0
+      ],
+      "radius": 10.0
+    }
+  ],
+  "constraints": [
+    {
+      "id": "c1",
+      "type": "tangent",
+      "references": [
+        "L0",
+        "A0"
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "tangent",
+      "references": [
+        "A0",
+        "L1"
+      ]
+    },
+    {
+      "id": "c3",
+      "type": "horizontal",
+      "references": [
+        "L0"
+      ]
+    },
+    {
+      "id": "c4",
+      "type": "radius",
+      "references": [
+        "A0"
+      ],
+      "value": 8.0
+    },
+    {
+      "id": "c5",
+      "type": "coincident",
+      "references": [
+        {
+          "element": "L0",
+          "point": "end"
+        },
+        {
+          "element": "A0",
+          "point": "start"
+        }
+      ]
+    }
+  ],
+  "solver_status": "fully_constrained",
+  "degrees_of_freedom": 0
+}

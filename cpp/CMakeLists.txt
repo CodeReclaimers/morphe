@@ -65,6 +65,12 @@ if(MORPHE_BUILD_TESTS)
         )
     elseif(MSVC)
         target_compile_options(morphe_tests PRIVATE /W4)
+        # Force-include <ostream> on MSVC: doctest's single header only
+        # forward-declares std::basic_ostream, but recent MSVC standard
+        # library headers (VS 2022 17.14+) require the full definition
+        # when <string_view> is pulled in transitively. Force-include
+        # avoids touching every test source.
+        target_compile_options(morphe_tests PRIVATE /FIostream)
     endif()
 
     add_test(NAME morphe_tests COMMAND morphe_tests)
